@@ -31,6 +31,22 @@ change speed while you are typing in the search or exact speed field.
 This is a practice tool, not a leaderboard certification system. Check category
 rules for submitted runs. Input recording, replay, and frame stepping are absent.
 
+## Wood Utilities
+
+Included and enabled by default. Press F10, select **Wood Utilities**, and open
+Settings. Auto-speedrunner mode enables TUNG's native mode on startup, with an
+independent speedrunner music preference. Disabling auto mode leaves the current
+run unchanged; soundtrack selection applies on the next run, and switching it
+off also mutes the speedrunner soundtrack immediately.
+
+Audio controls include master, music, effects, and voice volume, plus mute.
+Mouse controls include independent horizontal and vertical sensitivity (0.10x
+to 3.00x), axis inversion, and Unreal's mouse smoothing option. Defaults retain
+vanilla volume and mouse behavior. Reset audio and Reset mouse restore defaults.
+Preferences save automatically in `.wood/WoodUtilities.settings.ini` and survive
+updates and uninstall. These controls never edit Windows mouse settings or game
+save files. Disable the mod in Wood Launcher and restart to return to vanilla.
+
 ## Build on Windows
 
 Python 3.10 (x64):
@@ -60,6 +76,7 @@ unsigned. Game updates may require runtime changes.
 - `wood_runtime.py`: native deployment and local command/status bridge.
 - `NativeMods/WoodRuntime`: UE4SS Lua runtime and native Unreal widgets.
   `Scripts/menu.lua` owns library browsing and settings presentation.
+- `NativeMods/WoodUtilities`: native speedrunner, audio, and mouse controls.
 - `NativeMods/_Example`: extension template with persistent native settings.
 - `tests`: runtime, installation, and Steam restoration regression tests.
 - `site`: static website generator; `dist` contains deployable pages.
@@ -72,7 +89,7 @@ license is included in the bundled archive and installed runtime.
 ## Prepare a GitHub release
 
 The local repository is prepared but has not been pushed. When ready, create an
-empty repository, add it as `origin`, and push `main`. Push a `v2.1.4` tag to run
+empty repository, add it as `origin`, and push `main`. Push a `v2.2.0` tag to run
 the release workflow. The workflow publishes the standalone installer and
 checksums as GitHub release assets. `workflow_dispatch` builds an artifact without
 publishing a release.

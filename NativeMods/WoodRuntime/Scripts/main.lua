@@ -89,6 +89,21 @@ local function extension_api(definition)
         button = function(parent, label, callback)
             return ui:add_button(parent, label, callback)
         end,
+        section = function(parent, title, description)
+            local panel=ui:card(parent)
+            ui:label(panel,title,20)
+            if description then ui:label(panel,description,13) end
+            return panel
+        end,
+        toggle = function(parent, label, value, callback)
+            return ui:add_toggle(parent,label,value,callback)
+        end,
+        slider = function(parent, label, low, high, step, value, callback, format)
+            return ui:add_slider(parent,label,low,high,step,value,callback,format)
+        end,
+        refreshSettings = function()
+            if ui.visible and ui.selected==definition.id then ui:render_details() end
+        end,
         get = function(key, default)
             local value = read_ini(path)[key]
             if value == nil then return default end
@@ -108,7 +123,7 @@ local function extension_api(definition)
     }
 end
 ui = dofile(directory .. '/menu.lua')({
-    version='2.1.4', extensions=extensions, extension_api=extension_api,
+    version='2.2.0', extensions=extensions, extension_api=extension_api,
     state=function() return {speed=speed,applied=applied,enabled=enabled,restore_on_travel=restore_on_travel} end,
     set_speed=set_speed,
     set_enabled=function(value) enabled=value; set_speed(speed) end,
@@ -222,6 +237,17 @@ LoopAsync(16, function()
                 end
             end
             if ticks % 6 == 0 then command() end
+            if ticks % 30 == 0 then
+                for _, definition in ipairs(extensions) do
+                    if definition.enabled and type(definition.onTick)=='function' then
+                        local ok,err=pcall(definition.onTick,extension_api(definition))
+                        if not ok and definition.tick_error~=tostring(err) then
+                            definition.tick_error=tostring(err)
+                            print('[Wood] '..definition.id..': '..tostring(err)..'\n')
+                        elseif ok then definition.tick_error=nil end
+                    end
+                end
+            end
             applied = gameplay():GetGlobalTimeDilation(pc)
             if valid(entry) then
                 entry:SetVisibility(not ui.visible and pc.bShowMouseCursor and 0 or 2)
@@ -239,4 +265,4 @@ LoopAsync(16, function()
     end)
     return false
 end)
-print('[Wood] Time Warp 2.1.4 loaded. F10 mods; F6 slower; F7 reset; F8 faster.\n')
+print('[Wood] Time Warp 2.2.0 loaded. F10 mods; F6 slower; F7 reset; F8 faster.\n')

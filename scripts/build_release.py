@@ -17,7 +17,7 @@ def main():
     cache = ROOT / '.build'; cache.mkdir(exist_ok=True)
     make_icon(cache / 'wood.ico')
     version = cache / 'version.txt'
-    version.write_text("VSVersionInfo(ffi=FixedFileInfo(filevers=(2,1,4,0),prodvers=(2,1,4,0),mask=0x3f,flags=0,OS=0x40004,fileType=1,subtype=0,date=(0,0)),kids=[StringFileInfo([StringTable('040904B0',[StringStruct('CompanyName','Wood contributors'),StringStruct('FileDescription','Wood for TUNG'),StringStruct('FileVersion','2.1.4'),StringStruct('InternalName','Wood'),StringStruct('OriginalFilename','WoodSetup.exe'),StringStruct('ProductName','Wood for TUNG'),StringStruct('ProductVersion','2.1.4')])]),VarFileInfo([VarStruct('Translation',[1033,1200])])])")
+    version.write_text("VSVersionInfo(ffi=FixedFileInfo(filevers=(2,2,0,0),prodvers=(2,2,0,0),mask=0x3f,flags=0,OS=0x40004,fileType=1,subtype=0,date=(0,0)),kids=[StringFileInfo([StringTable('040904B0',[StringStruct('CompanyName','Wood contributors'),StringStruct('FileDescription','Wood for TUNG'),StringStruct('FileVersion','2.2.0'),StringStruct('InternalName','Wood'),StringStruct('OriginalFilename','WoodSetup.exe'),StringStruct('ProductName','Wood for TUNG'),StringStruct('ProductVersion','2.2.0')])]),VarFileInfo([VarStruct('Translation',[1033,1200])])])")
     archive = cache / 'UE4SS.zip'
     if not archive.exists():
         with urllib.request.urlopen(RUNTIME_URL, timeout=120) as response, archive.open('wb') as target:

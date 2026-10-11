@@ -2,7 +2,7 @@
 -- The library stays visible while each mod supplies its own settings page.
 return function(options)
     local ui = {visible=false, query='', filter='All', selected=nil, tab='Settings',
-        actions={shell={},list={},details={}}, list_buttons={}, shown={}}
+        actions={shell={},list={},details={}}, list_buttons={}, shown={}, controls={}}
     local c = {
         -- Unreal accepts linear colors; these render as Wood's charcoal/purple theme.
         ink={R=0.006,G=0.005,B=0.010,A=1}, rail={R=0.012,G=0.008,B=0.020,A=1},
@@ -67,6 +67,50 @@ return function(options)
     function ui:add_button(parent,label,callback)
         local line=self:construct('HorizontalBox'); row(parent,line)
         return self:button(line,label,callback)
+    end
+    function ui:add_toggle(parent,label,initial,callback)
+        local line=self:construct('HorizontalBox'); row(parent,line,8)
+        local text=self:text(label,15)
+        line:AddChildToHorizontalBox(text):SetSize({Value=1,SizeRule=1})
+        local value=initial==true
+        local button,caption
+        button,caption=self:button(line,value and 'On' or 'Off',function()
+            value=not value
+            callback(value)
+            put(caption,value and 'On' or 'Off')
+            button:SetBackgroundColor(value and c.selected or c.rail)
+        end)
+        button:SetBackgroundColor(value and c.selected or c.rail)
+        button:SetToolTipText(FText(label))
+        return button
+    end
+    function ui:add_slider(parent,label,low,high,step,initial,callback,format)
+        local function rounded_value(value)
+            return math.max(low,math.min(high,math.floor((value-low)/step+0.5)*step+low))
+        end
+        local control={value=rounded_value(initial),callback=callback}
+        local caption=row(parent,self:text('',15),6)
+        local function update(value)
+            value=rounded_value(value)
+            if math.abs(value-control.value)<step/2 then return end
+            control.value=value
+            control.widget:SetValue(value)
+            put(caption,label..'  /  '..(format and format(value) or tostring(value)))
+            callback(value)
+        end
+        put(caption,label..'  /  '..(format and format(control.value) or tostring(control.value)))
+        local line=self:construct('HorizontalBox'); row(parent,line,5)
+        self:button(line,'-',function() update(control.value-step) end)
+        local slider=self:construct('Slider')
+        slider:SetMinValue(low); slider:SetMaxValue(high); slider:SetStepSize(step)
+        slider:SetValue(control.value); slider:SetSliderBarColor(c.selected); slider:SetSliderHandleColor(c.purple)
+        slider:SetToolTipText(FText(label))
+        local slot=line:AddChildToHorizontalBox(slider)
+        slot:SetSize({Value=1,SizeRule=1}); slot:SetPadding({Left=14,Top=8,Right=14,Bottom=8})
+        self:button(line,'+',function() update(control.value+step) end)
+        control.widget=slider; control.update=update
+        table.insert(self.controls,control)
+        return slider
     end
     function ui:card(parent)
         local border=self:construct('Border'); border:SetBrushColor(c.card)
@@ -239,7 +283,7 @@ return function(options)
         self.selected=id; self.tab=tab or 'Settings'; self:render_details(); self:paint_selection()
     end
     function ui:render_details()
-        self.details:ClearChildren(); self.actions.details={}
+        self.details:ClearChildren(); self.actions.details={}; self.controls={}
         self.slider=nil; self.speed_label=nil; self.speed_input=nil; self.validation=nil
         self.mod_status=nil; self.last_metadata=nil
         local panel=self.details; local mod=self:find(self.selected)
@@ -424,13 +468,16 @@ return function(options)
             if number~=state().speed then options.set_speed(number) end
         end
         self:refresh_timewarp()
+        for _,control in ipairs(self.controls) do
+            if valid(control.widget) then control.update(control.widget:GetValue()) end
+        end
         self:update_focus()
     end
     function ui:invalidate()
         self:hide()
         if valid(self.widget) then self.widget:RemoveFromParent() end
         self.widget=nil; self.tree=nil; self.search=nil; self.slider=nil; self.speed_label=nil; self.speed_input=nil; self.mod_status=nil
-        self.actions={shell={},list={},details={}}; self.list_buttons={}
+        self.actions={shell={},list={},details={}}; self.list_buttons={}; self.controls={}
         self.focus_widget=nil
     end
     function ui:make_entry(pc)

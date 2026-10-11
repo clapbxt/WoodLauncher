@@ -177,7 +177,7 @@ class NativeMenuTests(unittest.TestCase):
     def test_keyboard_focus_is_visible_and_activates_the_selected_control(self):
         self.run_lua("assert(click('Time Warp'));focus(nil);test_ui.enabled_button.focus=true;tick()")
         self.run_lua('assert(test_ui.enabled_button.WidgetStyle.Normal.OutlineSettings.Width==2)')
-        self.run_lua("keys.SPACE();assert(pc.ignore_move);assert(has_label(test_ui.details,'v2.1.4  /  Wood  /  Disabled'))")
+        self.run_lua("keys.SPACE();assert(pc.ignore_move);assert(has_label(test_ui.details,'v2.2.0  /  Wood  /  Disabled'))")
         self.run_lua('focus(nil);test_ui.travel_button.focus=true;tick()')
         self.run_lua('assert(test_ui.enabled_button.WidgetStyle.Normal.OutlineSettings.Width==0);assert(test_ui.travel_button.WidgetStyle.Normal.OutlineSettings.Width==2)')
         self.run_lua('keys.RETURN()')
