@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import re
 import struct
+import sys
 import tempfile
 import zlib
 
@@ -17,8 +18,8 @@ PNG_SIGNATURE = b'\x89PNG\r\n\x1a\n'
 
 def _field(metadata: dict[str, str], key: str, maximum: int) -> str:
     value = str(metadata.get(key, '')).strip()
-    if not value or len(value) > maximum or '\n' in value or '\r' in value:
-        raise ValueError(f'{key.replace("_", " ").title()} must be 1-{maximum} characters on one line.')
+    if not value or len(value.encode('utf-8')) > maximum or '\n' in value or '\r' in value:
+        raise ValueError(f'{key.replace("_", " ").title()} must be 1-{maximum} UTF-8 bytes on one line.')
     return value
 
 
@@ -180,8 +181,14 @@ def run_gui() -> None:
         def __init__(self):
             super().__init__()
             self.title('Wood Mod Packager')
-            self.geometry('620x570')
-            self.minsize(560, 500)
+            self.geometry('620x620')
+            self.minsize(560, 550)
+            assets = Path(getattr(sys, '_MEIPASS', Path(__file__).parent))
+            self.brand_logo = tk.PhotoImage(file=str(assets / 'WoodLauncherLogo.png'))
+            self.brand_small = self.brand_logo.subsample(2)
+            self.iconphoto(True, self.brand_logo)
+            if (assets / 'wood.ico').exists():
+                self.iconbitmap(str(assets / 'wood.ico'))
             self.lua_path = tk.StringVar()
             self.icon_path = tk.StringVar()
             self.output_path = tk.StringVar()
@@ -195,7 +202,10 @@ def run_gui() -> None:
         def _build(self, ttk):
             frame = ttk.Frame(self, padding=20)
             frame.pack(fill='both', expand=True)
-            ttk.Label(frame, text='Create a TUNG mod package', font=('Segoe UI', 18, 'bold')).pack(anchor='w')
+            header = ttk.Frame(frame)
+            header.pack(fill='x')
+            ttk.Label(header, image=self.brand_small).pack(side='left', padx=(0, 12))
+            ttk.Label(header, text='Create a TUNG mod package', font=('Segoe UI', 18, 'bold')).pack(side='left')
             ttk.Label(frame, text='Bundle Lua source, optional PNG artwork, and mod metadata into one .tungmod file.',
                       wraplength=560).pack(anchor='w', pady=(5, 16))
             fields = ttk.Frame(frame)
@@ -207,7 +217,7 @@ def run_gui() -> None:
             self._path_row(ttk, frame, 'Lua source', self.lua_path, self._choose_lua)
             self._path_row(ttk, frame, 'PNG icon (optional)', self.icon_path, self._choose_icon)
             self._path_row(ttk, frame, 'Output file', self.output_path, self._choose_output)
-            ttk.Label(frame, text='PNG limit: 2048×2048, 4 megapixels, 4 MiB. Lua limit: 1 MiB.',
+            ttk.Label(frame, text='Recommended logo: 128×128. PNG limit: 2048×2048, 4 megapixels, 4 MiB. Lua limit: 1 MiB.',
                       wraplength=560).pack(anchor='w', pady=(10, 16))
             ttk.Button(frame, text='Build .tungmod', command=self._package).pack(anchor='e')
 

@@ -1,15 +1,26 @@
+# Local Python environment and generated release files
 __pycache__/
 *.pyc
-.wood/
+.venv/
 .build/
 payload/
 release/
-site/dist/downloads/*.exe
-site/.openai/
 *.spec
-.venv/
-site/.git/
-site/.gitignore
+*.exe
+*.dll
+*.zip
+.wood/
 
-.netlify/
+# Standalone mods and other projects do not belong in this repository
+Mods/
+mod data/
+packaged mods/
+*.tungmod
+Windows/
+TUNG-LiveSplit-Autosplitter*/
+site/
 node_modules/
+.netlify/
+netlify.toml
+package.json
+package-lock.json

@@ -42,6 +42,16 @@ return function(options)
         o:SetColorAndOpacity(slate(color or c.white)); o:SetAutoWrapText(true)
         return o
     end
+    function ui:logo(size, outer)
+        if not options.logoPath or not options.loadIcon then return nil end
+        local ok, texture=pcall(options.loadIcon, options.logoPath)
+        if not ok or not valid(texture) then return nil end
+        local image=self:construct('Image',outer)
+        image:SetBrushFromTexture(texture,true)
+        local box=self:construct('SizeBox',outer)
+        box:SetWidthOverride(size); box:SetHeightOverride(size); box:AddChild(image)
+        return box
+    end
     local function row(parent, child, padding)
         local slot=parent:AddChildToVerticalBox(child)
         slot:SetPadding({Left=0,Top=padding or 5,Right=0,Bottom=padding or 5})
@@ -170,6 +180,7 @@ return function(options)
                 local content_slot=item:AddChild(contents)
                 content_slot:SetPadding({Left=12,Top=12,Right=12,Bottom=12}); content_slot:SetHorizontalAlignment(0)
                 local icon=self:construct('Border'); icon:SetBrushColor(c.selected)
+                icon:SetPadding({Left=0,Top=0,Right=0,Bottom=0})
                 rounded(icon.Background,7,{R=1,G=1,B=1,A=1})
                 local texture
                 if mod.iconPath and options.loadIcon then
@@ -189,7 +200,11 @@ return function(options)
                     local ok, err=pcall(function() image:SetBrushFromTexture(texture,true) end)
                     if ok then
                         local box=self:construct('SizeBox')
-                        box:SetWidthOverride(42); box:SetHeightOverride(42); box:AddChild(image)
+                        box:SetWidthOverride(128); box:SetHeightOverride(128)
+                        local scale=self:construct('ScaleBox')
+                        scale:SetStretch(1) -- ScaleToFit preserves the texture's aspect ratio.
+                        scale:AddChild(image)
+                        box:AddChild(scale)
                         icon:SetContent(box)
                     else
                         print('[Wood] Could not display mod icon ' .. mod.iconPath .. ': ' .. tostring(err) .. '\n')
@@ -200,7 +215,10 @@ return function(options)
                     icon:SetPadding({Left=10,Top=9,Right=10,Bottom=9})
                     icon:SetContent(self:text(mod.badge,15,c.purple))
                 end
-                contents:AddChildToHorizontalBox(icon):SetPadding({Left=0,Top=0,Right=12,Bottom=0})
+                local icon_slot=contents:AddChildToHorizontalBox(icon)
+                icon_slot:SetSize({Value=1,SizeRule=0})
+                icon_slot:SetPadding({Left=0,Top=0,Right=12,Bottom=0})
+                icon_slot:SetVerticalAlignment(1)
                 local words=self:construct('VerticalBox')
                 contents:AddChildToHorizontalBox(words):SetSize({Value=1,SizeRule=1})
                 row(words,self:text(mod.name,17),1)
@@ -294,6 +312,8 @@ return function(options)
         scaling:AddChild(design); self.tree.RootWidget=scaling
         local header=self:construct('Border'); header:SetBrushColor(c.rail); header:SetPadding({Left=24,Top=16,Right=24,Bottom=16})
         local heading=self:construct('HorizontalBox'); header:SetContent(heading)
+        local logo=self:logo(40)
+        if logo then heading:AddChildToHorizontalBox(logo):SetPadding({Left=0,Top=0,Right=14,Bottom=0}) end
         heading:AddChildToHorizontalBox(self:text('WOOD  /  MODS',23,c.lime)):SetSize({Value=1,SizeRule=1})
         local ver=self:text('v'..options.version..'   /   TUNG',13,c.muted); ver:SetAutoWrapText(false)
         heading:AddChild(ver); shell:AddChild(header)
@@ -414,7 +434,11 @@ return function(options)
         local outer=widget.WidgetTree; local button=self:construct('Button',outer); self:skin_button(button)
         local caption=self:text('Wood Mods  /  F10',16,c.lime,outer)
         caption:SetAutoWrapText(false); caption:SetJustification(1)
-        button:AddChild(caption):SetPadding({Left=12,Top=8,Right=12,Bottom=8})
+        local content=self:construct('HorizontalBox',outer)
+        local logo=self:logo(32,outer)
+        if logo then content:AddChildToHorizontalBox(logo):SetPadding({Left=0,Top=0,Right=10,Bottom=0}) end
+        content:AddChildToHorizontalBox(caption):SetVerticalAlignment(1)
+        button:AddChild(content):SetPadding({Left=12,Top=8,Right=12,Bottom=8})
         button:SetBackgroundColor(c.rail); outer.RootWidget=button
         widget:AddToViewport(9000); widget:SetDesiredSizeInViewport({X=260,Y=56})
         local size=StaticFindObject('/Script/UMG.Default__WidgetLayoutLibrary'):GetViewportSize(pc)

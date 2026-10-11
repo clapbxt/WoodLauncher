@@ -10,7 +10,7 @@ import zipfile
 import wood_runtime as runtime
 import steam_setup
 
-VERSION = '2.3.0'
+VERSION = '2.3.2'
 
 
 def digest(path):
@@ -110,6 +110,26 @@ class Journal:
         self.data['version'] = VERSION
         runtime.atomic_write(self.path, json.dumps(self.data, indent=2))
 
+    def retire(self, relative):
+        """Remove an obsolete, unchanged installer-owned file on upgrade."""
+        record = self.data['files'].get(relative)
+        if not record:
+            return
+        path = self.target(relative)
+        if path.exists():
+            if record['sha256'] is None or digest(path) != record['sha256']:
+                return  # A user edit is no longer safe to remove.
+            self.capture(path)
+            if record['backup']:
+                backup = self.target(record['backup'])
+                if not backup.is_file():
+                    raise FileNotFoundError(f'Original file backup is missing: {relative}')
+                shutil.copy2(backup, path)
+            else:
+                path.unlink()
+        del self.data['files'][relative]
+        self.save()
+
     def rollback(self):
         for path, data in reversed(list(self.undo.items())):
             if data is None:
@@ -129,11 +149,6 @@ def install(game, payload, installer, check_running=True):
     archive = payload / 'UE4SS.zip'
     if digest(archive) != runtime.RUNTIME_SHA256:
         raise ValueError('Bundled runtime failed SHA-256 verification.')
-    mod_sources = sorted((payload / 'Mods').glob('*.lua'))
-    required_mods = {'TimeWarp.lua', 'WoodUtilities.lua', 'Coordinates.lua'}
-    missing_mods = required_mods - {mod.name for mod in mod_sources}
-    if missing_mods:
-        raise FileNotFoundError(f'Bundled mod source(s) are missing: {", ".join(sorted(missing_mods))}')
     journal = Journal(game)
     new_loader = not (runtime.RUNTIME / 'UE4SS.dll').exists()
     try:
@@ -152,11 +167,8 @@ def install(game, payload, installer, check_running=True):
                         content = ('\n'.join(line.split(':')[0].strip() + ' : 0' if line.split(':')[0].strip() in debug else line for line in lines) + '\n').encode()
                     journal.put(Path('TUNG/Binaries/Win64') / info.filename, content, replace=False)
         journal.put('WoodUninstall.exe', Path(installer).read_bytes())
-        launcher = payload / 'WoodLauncher.exe'
-        if not launcher.is_file():
-            raise FileNotFoundError('Bundled WoodLauncher.exe is missing.')
-        journal.put('WoodLauncher.exe', launcher.read_bytes())
         journal.put('Wood-Licenses.txt', (payload / 'Wood-Licenses.txt').read_bytes())
+        journal.put('.wood/wood-logo.png', (payload / 'WoodLauncherLogo.png').read_bytes())
         journal.put('.wood/cache/UE4SS.zip', archive.read_bytes(), replace=False)
         generated = [runtime.RUNTIME / 'Mods/mods.txt', runtime.RUNTIME / 'Mods/WoodRuntime/Scripts/paths.lua']
         generated += [runtime.RUNTIME / 'Mods/WoodRuntime' / source.relative_to(payload / 'NativeMods/WoodRuntime')
@@ -164,8 +176,11 @@ def install(game, payload, installer, check_running=True):
         for path in generated: journal.capture(path)
         runtime.install_runtime(archive, payload / 'NativeMods/WoodRuntime')
         for path in generated: journal.record(path)
-        for mod in mod_sources:
-            journal.put(Path('Mods') / mod.name, mod.read_bytes())
+        # Older installers shipped optional mods. Retire only copies we own
+        # whose hashes still match; downloaded packages and user edits stay.
+        journal.retire('WoodLauncher.exe')
+        for name in ('TimeWarp.lua', 'WoodUtilities.lua', 'Coordinates.lua'):
+            journal.retire('Mods/' + name)
         journal.save()
         return journal.data
     except Exception:

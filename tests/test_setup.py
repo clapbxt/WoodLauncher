@@ -8,6 +8,32 @@ import steam_setup
 
 
 class SetupTests(unittest.TestCase):
+    def test_upgrade_retires_only_unchanged_owned_mods_and_rolls_back(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / 'Mods').mkdir()
+            (root / 'Mods/Coordinates.lua').write_bytes(b'original user mod')
+            journal = setup_core.Journal(root)
+            journal.put('WoodLauncher.exe', b'old launcher')
+            journal.put('Mods/TimeWarp.lua', b'old bundled mod')
+            journal.put('Mods/Coordinates.lua', b'old bundled mod')
+            journal.put('Mods/WoodUtilities.lua', b'old bundled mod')
+            (root / 'Mods/WoodUtilities.lua').write_bytes(b'user edit')
+            (root / 'Mods/TimeWarp.tungmod').write_bytes(b'user package')
+            upgrade = setup_core.Journal(root)
+            upgrade.retire('WoodLauncher.exe')
+            for name in ('TimeWarp.lua', 'Coordinates.lua', 'WoodUtilities.lua'):
+                upgrade.retire('Mods/' + name)
+            self.assertFalse((root / 'Mods/TimeWarp.lua').exists())
+            self.assertFalse((root / 'WoodLauncher.exe').exists())
+            self.assertEqual((root / 'Mods/Coordinates.lua').read_bytes(), b'original user mod')
+            self.assertEqual((root / 'Mods/WoodUtilities.lua').read_bytes(), b'user edit')
+            self.assertEqual((root / 'Mods/TimeWarp.tungmod').read_bytes(), b'user package')
+            upgrade.rollback()
+            self.assertEqual((root / 'WoodLauncher.exe').read_bytes(), b'old launcher')
+            self.assertEqual((root / 'Mods/TimeWarp.lua').read_bytes(), b'old bundled mod')
+            self.assertEqual((root / 'Mods/Coordinates.lua').read_bytes(), b'old bundled mod')
+
     def test_journal_rollback_and_path_traversal(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp); (root / 'existing.txt').write_text('original')

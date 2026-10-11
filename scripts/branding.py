@@ -1,22 +1,20 @@
-"""Create a code-native Wood application icon without external artwork."""
+"""Use the shared Wood logo for Windows application icons."""
 from pathlib import Path
 import struct
-import zlib
+
+LOGO = Path(__file__).resolve().parents[1] / 'WoodLauncherLogo.png'
 
 
 def make_icon(path):
-    points = [(4,8),(12,8),(16,26),(20,14),(24,26),(28,8),(36,8),(28,34),(21,34),(20,29),(19,34),(12,34)]
-    def inside(x, y):
-        odd = False
-        for a, b in zip(points, points[1:] + points[:1]):
-            if (a[1] > y) != (b[1] > y) and x < (b[0]-a[0])*(y-a[1])/(b[1]-a[1])+a[0]: odd = not odd
-        return odd
-    rows = bytearray()
-    for y in range(256):
-        rows.append(0)
-        for x in range(256):
-            rows.extend((196,244,107,255) if inside(x/6.4,y/6.4) else (16,16,23,255))
-    def chunk(name, data):
-        return struct.pack('>I',len(data))+name+data+struct.pack('>I',zlib.crc32(name+data)&0xffffffff)
-    png = b'\x89PNG\r\n\x1a\n'+chunk(b'IHDR',struct.pack('>IIBBBBB',256,256,8,6,0,0,0))+chunk(b'IDAT',zlib.compress(rows))+chunk(b'IEND',b'')
-    Path(path).write_bytes(struct.pack('<HHH',0,1,1)+struct.pack('<BBBBHHII',0,0,0,0,1,32,len(png),22)+png)
+    # ICO supports PNG frames directly; preserve the original artwork and alpha.
+    png = LOGO.read_bytes()
+    if not png.startswith(b'\x89PNG\r\n\x1a\n') or png[12:16] != b'IHDR':
+        raise ValueError('WoodLauncherLogo.png must be a PNG image.')
+    width, height = struct.unpack('>II', png[16:24])
+    if (width, height) != (128, 128):
+        raise ValueError('The shared Wood logo must be 128 by 128 pixels.')
+    output = Path(path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_bytes(struct.pack('<HHH', 0, 1, 1)
+                       + struct.pack('<BBBBHHII', width, height, 0, 0, 1, 32, len(png), 22)
+                       + png)

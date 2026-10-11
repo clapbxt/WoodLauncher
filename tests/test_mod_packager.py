@@ -27,7 +27,7 @@ class ModPackagerTests(unittest.TestCase):
         self.lua_file = self.root / 'helper.lua'
         self.lua_file.write_text("return {description='Lua description'}\n", encoding='utf-8')
         self.icon_file = self.root / 'helper.png'
-        self.icon_file.write_bytes(png_fixture())
+        self.icon_file.write_bytes(png_fixture(128, 128))
         self.metadata = {
             'id': 'helper-mod',
             'name': 'Helper Mod',
@@ -66,6 +66,10 @@ class ModPackagerTests(unittest.TestCase):
         self.icon_file.write_bytes(png_fixture()[:-5] + b'\x00\x00\x00\x00\x00')
         with self.assertRaisesRegex(ValueError, 'checksum'):
             create_package(self.lua_file, self.root / 'bad', self.metadata, self.icon_file)
+
+    def test_metadata_limits_match_runtime_utf8_byte_limits(self):
+        with self.assertRaisesRegex(ValueError, 'UTF-8 bytes'):
+            create_package(self.lua_file, self.root / 'bad', {**self.metadata, 'name': '\u00e9' * 41})
 
     def test_png_icon_is_optional(self):
         package_file = create_package(self.lua_file, self.root / 'without-icon', self.metadata)

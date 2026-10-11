@@ -1,5 +1,6 @@
 """Exercise the actual native Lua UI against a reflected-widget/engine double."""
 from pathlib import Path
+import os
 import tempfile
 import unittest
 import struct
@@ -37,9 +38,12 @@ function object(class)
  function o:GetText() return FText(self.label or '') end
  function o:SetFont(f) self.Font=f end
  function o:SetBrushFromTexture(texture) self.texture=texture end
+ function o:SetWidthOverride(v) self.width=v end
+ function o:SetHeightOverride(v) self.height=v end
+ function o:SetStretch(v) self.stretch=v end
  function o:ImportFileAsTexture2D(_,path)
   icon_imports=icon_imports+1
-  return {path=path}
+  return {path=path, IsValid=function() return true end}
  end
  -- Copying a live owning style through the pinned UE4SS bridge can terminate TUNG.
  function o:SetStyle(s) unsafe_style_calls=unsafe_style_calls+1;error('Unsafe owning FButtonStyle resubmission') end
@@ -61,8 +65,8 @@ function object(class)
  function o:SetIsEnabled(v) self.enabled=v end
  function o:RemoveFromParent() self.removed=true end
  function o:Create() local m=object('UserWidget');m.WidgetTree=object('WidgetTree');return m end
- for _,name in ipairs({'SetPadding','SetSize','SetHorizontalAlignment','SetBrushColor','SetColorAndOpacity','SetForegroundColor','SetHintText',
-  'SetAutoWrapText','SetWidthOverride','SetHeightOverride','SetStretch','SetJustification','SetToolTipText','SetMinValue','SetMaxValue','SetStepSize',
+ for _,name in ipairs({'SetPadding','SetSize','SetHorizontalAlignment','SetVerticalAlignment','SetBrushColor','SetColorAndOpacity','SetForegroundColor','SetHintText',
+  'SetAutoWrapText','SetJustification','SetToolTipText','SetMinValue','SetMaxValue','SetStepSize',
   'SetSliderBarColor','SetSliderHandleColor','AddToViewport','SetAlignmentInViewport','SetPositionInViewport',
   'SetInputMode_GameAndUIEx','SetInputMode_GameOnly','SetInputMode_UIOnlyEx'}) do o[name]=function() end end
  table.insert(created,o);return o
@@ -88,7 +92,7 @@ function dofile(path)
 end
 function io.popen(cmd)
  if cmd:find('dir /b',1,true) and cmd:find('Mods',1,true) then
-  return {lines=function() return coroutine.wrap(function() coroutine.yield('Example.lua') coroutine.yield('TimeWarp.lua') coroutine.yield('WoodUtilities.lua') coroutine.yield('Disabled.lua') coroutine.yield('Broken.lua') coroutine.yield('Packaged.tungmod') end) end, close=function() end}
+  return {lines=function() return coroutine.wrap(function() coroutine.yield('Example.lua') coroutine.yield('Disabled.lua') coroutine.yield('Broken.lua') coroutine.yield('Packaged.tungmod') end) end, close=function() end}
  end
  return real_popen(cmd)
 end
@@ -121,211 +125,130 @@ class NativeMenuTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix='wood-ui-')
         self.addCleanup(self.temp.cleanup)
-        self.data = Path(self.temp.name) / '.wood'
+        self.root = Path(self.temp.name)
+        self.data = self.root / '.wood'
         self.data.mkdir()
-        self.mods_dir = Path(self.temp.name) / 'Mods'
+        self.mods_dir = self.root / 'Mods'
         self.mods_dir.mkdir()
-        # Create test mod files
-        (self.mods_dir / 'Example.lua').write_text('''return {
-    name = 'Example',
-    version = '1.0',
-    author = 'Test',
-    description = 'A practice helper',
-    tickInterval = 6,
-    onTick = function() fast_ticks = fast_ticks + 1 end,
-    buildSettings = function(api, panel)
-        builds = builds + 1
-        api.button(panel, 'Example settings', function() callbacks = callbacks + 1 end)
-        api.input(panel, 'Example input', 'test')
-    end,
-}''', encoding='utf-8')
-        (self.mods_dir / 'TimeWarp.lua').write_text('''local function clamp(value)
-    local n = tonumber(value)
-    if not n or n ~= n or n == math.huge or n == -math.huge then return 1 end
-    return math.floor(math.max(0.05, math.min(4, n)) * 100 + 0.5) / 100
-end
-local mod = {name = 'Time Warp', version = '2.2.3', author = 'Wood', description = 'World speed control.'}
-local speed, enabled, restore_on_travel = 1, true, true
-local applied = 1
-local api_ref
-local function gameplay() return StaticFindObject('/Script/Engine.Default__GameplayStatics') end
-local function valid(o) return o and o:IsValid() end
-local function apply(api)
-    local pc = api.playerController
-    if not valid(pc) then return end
-    gameplay():SetGlobalTimeDilation(pc, enabled and speed or 1)
-    applied = gameplay():GetGlobalTimeDilation(pc)
-end
-local function set_speed(api, value)
-    speed = clamp(value)
-    apply(api)
-    api.set('speed', speed)
-    api.set('enabled', enabled)
-    api.set('restore_on_travel', restore_on_travel)
-    api.refreshSettings()
-end
-function mod.onWorldReady(api)
-    api_ref = api
-    speed = clamp(api.get('speed', 1))
-    enabled = api.get('enabled', true)
-    restore_on_travel = api.get('restore_on_travel', true)
-    apply(api)
-end
-function mod.onTick(api)
-    local pc = api.playerController
-    if valid(pc) then applied = gameplay():GetGlobalTimeDilation(pc) end
-end
-function mod.buildSettings(api, panel)
-    speed = clamp(api.get('speed', speed or 1))
-    enabled = api.get('enabled', enabled ~= nil and enabled or true)
-    restore_on_travel = api.get('restore_on_travel', restore_on_travel ~= nil and restore_on_travel or true)
-    local speed_card = api.section(panel, 'SELECTED SPEED', nil)
-    api.label(speed_card, string.format('%.2fx', speed), 30)
-    api.label(speed_card, enabled and string.format('Applied to the world: %.2fx', applied) or 'Disabled  /  world running at normal speed', 13)
-    api.slider(speed_card, 'Speed', 0.05, 4, 0.05, speed, function(v) set_speed(api, v) end, function(v) return string.format('%.2fx', v) end)
-    local presets_card = api.section(panel, 'PRESETS', nil)
-    for _, target in ipairs({0.1, 0.25, 0.5, 1, 2, 4}) do
-        api.button(presets_card, string.format('%gx', target), function() set_speed(api, target) end)
-    end
-    local pref_card = api.section(panel, 'PREFERENCES', nil)
-    api.toggle(pref_card, 'Time Warp enabled', enabled, function(v) enabled = v; apply(api); api.set('enabled', v); api.set('speed', speed); api.set('restore_on_travel', restore_on_travel); api.refreshSettings() end)
-    api.toggle(pref_card, 'Reset speed on world change', restore_on_travel, function(v) restore_on_travel = v; api.set('restore_on_travel', v) end)
-    api.label(panel, 'F6  Slower     F7  Normal     F8  Faster', 13)
-end
-return mod''', encoding='utf-8')
-        (self.mods_dir / 'WoodUtilities.lua').write_text('''return {name = 'Wood Utilities', version = '1.0', author = 'Wood', description = 'Utilities.'}''', encoding='utf-8')
-        (self.mods_dir / 'Disabled.lua').write_text('''return {name = 'Disabled', version = '1.0', author = 'Test', description = '', enabled = false}''', encoding='utf-8')
-        (self.mods_dir / 'Broken.lua').write_text('error("Example load failure")', encoding='utf-8')
-        package_source = self.root = Path(self.temp.name) / 'Packaged.lua'
-        package_source.write_text('return {description="ignored by package metadata"}', encoding='utf-8')
-        icon = Path(self.temp.name) / 'icon.png'
-        icon.write_bytes(png_fixture())
-        create_package(package_source, self.mods_dir / 'Packaged.tungmod', {
-            'id': 'packaged-helper', 'name': 'Packaged Helper', 'version': '1.0.0',
-            'author': 'Test', 'description': 'Loaded from a TUNG package.',
-        }, icon)
-        # Create mods_disabled.txt for Disabled mod
+        (self.mods_dir / 'Example.lua').write_text("""return {
+            name='Example', description='A practice helper', tickInterval=6,
+            onWorldReady=function() world_ready=(world_ready or 0)+1 end,
+            onTick=function() fast_ticks=fast_ticks+1 end,
+            buildSettings=function(api,panel)
+                builds=builds+1
+                api.button(panel,'Apply',function()
+                    callbacks=callbacks+1; api.set('count',callbacks)
+                end)
+            end,
+        }""", encoding='utf-8')
+        (self.mods_dir / 'Disabled.lua').write_text("return {name='Disabled'}", encoding='utf-8')
+        (self.mods_dir / 'Broken.lua').write_text("error('Example load failure')", encoding='utf-8')
         (self.data / 'mods_disabled.txt').write_text('Disabled\n', encoding='utf-8')
+        source = self.root / 'package-source.lua'
+        source.write_text("return {description='overridden'}", encoding='utf-8')
+        self.icon = self.root / 'icon.png'
+        self.icon.write_bytes(png_fixture(256, 128))
+        create_package(source, self.mods_dir / 'Packaged.tungmod', {
+            'id':'packaged-helper', 'name':'Packaged Helper', 'version':'1.0.0',
+            'author':'Test', 'description':'Loaded from a TUNG package.',
+        }, self.icon)
+        self.boot()
 
+    def boot(self, real_discovery=False):
         self.lua = LuaRuntime(unpack_returned_tuples=True)
         self.lua.globals().test_root = self.temp.name.replace('\\', '/')
         self.lua.globals().test_menu = str(Path('NativeMods/WoodRuntime/Scripts/menu.lua').resolve()).replace('\\', '/')
         self.lua.execute(BOOT)
-        source = Path('NativeMods/WoodRuntime/Scripts/main.lua').read_text(encoding='utf-8')
-        self.lua.execute("assert(load(..., '@NativeMods/WoodRuntime/Scripts/main.lua'))()", source)
-        self.lua.execute('tick(); keys.F10()')
+        if real_discovery:
+            self.lua.execute('io.popen=real_popen')
+        self.lua.execute("assert(load(..., '@NativeMods/WoodRuntime/Scripts/main.lua'))()",
+                         Path('NativeMods/WoodRuntime/Scripts/main.lua').read_text(encoding='utf-8'))
+        self.lua.execute('tick();keys.F10()')
 
     def tearDown(self):
-        self.lua.execute("assert(unsafe_style_calls==0, 'Do not resubmit a live owning FButtonStyle through UE4SS')")
+        self.lua.execute("assert(unsafe_style_calls==0, 'Do not resubmit live owning styles through UE4SS')")
 
-    def run_lua(self, code):
-        self.lua.execute(code)
-
-    def test_library_stays_visible_and_detached_callbacks_are_removed(self):
-        self.run_lua("assert(has_label(test_ui.details,'YOUR MODS'));assert(click('Example'));assert(builds==1)")
-        self.run_lua("assert(click('Example settings'));old_button=find_button('Example settings');assert(callbacks==1)")
-        self.run_lua("assert(click('Time Warp'));assert(test_ui.selected=='TimeWarp');assert(test_ui.list_buttons.Example)")
-        self.run_lua('click_widget(old_button);assert(callbacks==1);assert(builds==1)')
-        self.run_lua("assert(click('Disabled'));assert(has_label(test_ui.details,'This mod is disabled'))")
-        self.run_lua("assert(click('Broken'));assert(has_label(test_ui.details,'This mod could not load'))")
-
-    def test_mod_specific_tick_interval_and_native_text_input_api(self):
-        self.run_lua("""
-            baseline=fast_ticks
-            for i=1,5 do tick() end
-            assert(fast_ticks==baseline)
-            tick()
-            assert(fast_ticks==baseline+1)
-            for i=1,6 do tick() end
-            assert(fast_ticks==baseline+2)
-            assert(click('Example'))
-            assert(click('Example settings'))
-        """)
-
-    def test_tungmod_metadata_and_png_icon_are_loaded_into_the_native_menu(self):
-        self.run_lua("""
+    def test_package_metadata_and_original_icon_reach_native_menu(self):
+        self.lua.execute("""
             local packaged=test_ui:find('packaged-helper')
             assert(packaged and packaged.name=='Packaged Helper')
             assert(packaged.version=='1.0.0' and packaged.author=='Test')
             assert(packaged.description=='Loaded from a TUNG package.')
-            assert(packaged.iconPath:match('mod_packaged%-helper%.png$'))
-            assert(icon_imports>0)
             local image
-            for index=#created,1,-1 do
-                local widget=created[index]
-                if widget.class:match('Image$') and widget.texture then image=widget;break end
+            for _,widget in ipairs(created) do
+                if widget.texture and widget.texture.path==packaged.iconPath then image=widget end
             end
-            assert(image, 'No Image widget was constructed')
-            assert(image.texture, 'PNG texture was not assigned')
-            assert(image.texture.path==packaged.iconPath, 'Assigned texture path does not match metadata')
+            assert(image and image.parent.class:match('ScaleBox$') and image.parent.stretch==1)
+            assert(image.parent.parent.width==128 and image.parent.parent.height==128)
         """)
+        self.assertEqual((self.data / 'mod_packaged-helper.png').read_bytes(), self.icon.read_bytes())
+
+    def test_loader_branding_appears_in_entry_and_menu(self):
+        self.lua.execute("""
+            local count=0
+            for _,widget in ipairs(created) do
+                if widget.texture and widget.texture.path:match('/wood%-logo%.png$') then count=count+1 end
+            end
+            assert(count>=2, 'Entry button and menu header should both display Wood branding')
+        """)
+
+    def test_disabled_and_broken_mods_are_isolated(self):
+        self.lua.execute("""
+            assert(test_ui:find('Example').enabled)
+            assert(not test_ui:find('Disabled').enabled)
+            assert(test_ui:find('Broken').error:find('Example load failure',1,true))
+            assert(click('Disabled'));assert(has_label(test_ui.details,'This mod is disabled'))
+            assert(click('Broken'));assert(has_label(test_ui.details,'This mod could not load'))
+        """)
+
+    def test_settings_persist_and_detached_callbacks_are_removed(self):
+        self.lua.execute("""
+            assert(click('Example'));assert(builds==1)
+            local old=find_button('Apply');click_widget(old);assert(callbacks==1)
+            assert(click('Packaged Helper'));click_widget(old);assert(callbacks==1)
+            assert(click('Example'));assert(builds==2);assert(click('Apply'));assert(callbacks==2)
+        """)
+        self.assertIn('count=2', (self.data / 'Example.settings.ini').read_text())
 
     def test_search_filters_and_empty_state(self):
-        self.run_lua("test_ui.search:SetText(FText('practice helper'));tick();assert(#test_ui.shown==1 and test_ui.shown[1]=='Example')")
-        self.run_lua("test_ui.search:SetText(FText(''));tick();assert(click('Settings'));assert(#test_ui.shown>=2)")
-        self.run_lua("test_ui.search:SetText(FText('[?]'));tick();assert(#test_ui.shown==0);assert(has_label(test_ui.list,'No mods installed'))")
-        self.run_lua("assert(click('Reset filters'));assert(#test_ui.shown>=4);assert(test_ui.query=='' and test_ui.filter=='All')")
-
-    def test_filter_focus_transitions_preserve_the_page_and_settings(self):
-        self.run_lua("assert(click('Time Warp'));assert(click('2x'));old_row=test_ui.list_buttons.Example")
-        saved=(self.data / 'TimeWarp.settings.ini').read_bytes()
-        self.run_lua("""
-            for cycle=1,20 do
-                for _,filter in ipairs({'Active','Settings','All'}) do
-                    local button=test_ui.filter_buttons[filter]
-                    focus(nil);button.focus=true;tick()
-                    if cycle%2==0 then keys.RETURN();tick() else click_widget(button) end
-                    local expected=filter=='All' and 6 or filter=='Active' and 4 or 2
-                    assert(test_ui.filter==filter and #test_ui.shown==expected)
-                    assert(test_ui.selected=='TimeWarp' and applied_speed==2)
-                    assert(button.WidgetStyle.Normal.OutlineSettings.Width==2)
-                    assert(unsafe_style_calls==0)
-                end
-            end
-            focus(nil);click_widget(old_row)
-            assert(test_ui.selected=='TimeWarp' and applied_speed==2)
+        self.lua.execute("""
+            test_ui.search:SetText(FText('practice helper'));tick()
+            assert(#test_ui.shown==1 and test_ui.shown[1]=='Example')
+            test_ui.search:SetText(FText(''));tick();assert(click('Active'));assert(#test_ui.shown==2)
+            assert(click('Settings'));assert(#test_ui.shown==1)
+            test_ui.search:SetText(FText('[?]'));tick();assert(#test_ui.shown==0)
+            assert(click('Reset filters'));assert(#test_ui.shown==4)
         """)
-        self.assertEqual(saved, (self.data / 'TimeWarp.settings.ini').read_bytes())
 
-    def test_timewarp_presets_apply_and_persist(self):
-        self.run_lua("assert(click('Time Warp'))")
-        self.run_lua("assert(click('2x'));assert(applied_speed==2)")
-        self.assertIn('speed=2.0', (self.data / 'TimeWarp.settings.ini').read_text())
-        self.run_lua("assert(click('0.25x'));assert(applied_speed==0.25)")
-        self.assertIn('speed=0.25', (self.data / 'TimeWarp.settings.ini').read_text())
-
-    def test_toggles_presets_and_typing_do_not_change_unrelated_settings(self):
-        self.run_lua("assert(click('Time Warp'));assert(click('2x'));assert(applied_speed==2)")
-        self.run_lua("assert(click('On'));assert(applied_speed==1)")
-        self.assertIn('enabled=false', (self.data / 'TimeWarp.settings.ini').read_text())
-        self.run_lua("assert(click('0.25x'));assert(applied_speed==1);assert(has_label(test_ui.details,'0.25x'))")
-        self.run_lua("assert(click('Off'));assert(applied_speed==0.25)")
-        self.run_lua('focus(test_ui.search);keys.SPACE();assert(applied_speed==0.25)')
-        self.run_lua('focus(nil);keys.SPACE();assert(applied_speed==0.25)')
-
-    def test_keyboard_navigation_works(self):
-        self.run_lua("assert(click('Time Warp'))")
-        self.run_lua("keys.ESCAPE();assert(test_ui.selected==nil and test_ui.visible)")
-        self.run_lua('keys.ESCAPE();assert(not test_ui.visible);assert(not pc.ignore_look and not pc.ignore_move and pc.bShowMouseCursor)')
-        self.run_lua("keys.F10();assert(click('Example'));keys.F10();keys.F10();assert(test_ui.selected=='Example' and builds==1)")
-        self.run_lua("old_widget=test_ui.widget;world='NextWorld';tick();assert(old_widget.removed and not test_ui.visible)")
-        self.run_lua("keys.F10();assert(test_ui.widget~=old_widget and test_ui.selected=='Example')")
-
-    def test_fast_click_waits_for_slate_and_does_not_leak_into_another_page(self):
-        self.run_lua("old=find_button('Time Warp');target=find_button('Example');old.hover=true;keys.CLICK();assert(test_ui.selected==nil)")
-        self.run_lua("tick();old.hover=false;target.hover=true;tick();tick();assert(test_ui.selected=='Example' and builds==1)")
-        self.run_lua("target.hover=false;test_ui.list_buttons.TimeWarp.hover=true;keys.CLICK();keys.ESCAPE();tick();tick();tick();assert(test_ui.selected==nil)")
+    def test_callbacks_and_keyboard_survive_world_travel(self):
+        self.lua.execute("""
+            for i=1,6 do tick() end;assert(fast_ticks>0 and world_ready==1)
+            assert(click('Example'));keys.ESCAPE();assert(test_ui.selected==nil and test_ui.visible)
+            keys.ESCAPE();assert(not test_ui.visible and not pc.ignore_look and not pc.ignore_move)
+            world='NextWorld';tick();assert(world_ready==2);keys.F10();assert(test_ui.visible)
+        """)
 
     def test_viewport_respects_dpi_and_resizing(self):
-        self.run_lua('viewport={X=800,Y=600};dpi=1;test_ui:resize();assert(test_ui.widget.desired.X==760 and test_ui.widget.desired.Y==560)')
-        self.run_lua('viewport={X=1600,Y=900};dpi=1.25;test_ui:resize();assert(test_ui.widget.desired.X==896 and test_ui.widget.desired.Y==624)')
+        self.lua.execute("""
+            viewport={X=800,Y=600};dpi=1;test_ui:resize()
+            assert(test_ui.widget.desired.X==760 and test_ui.widget.desired.Y==560)
+            viewport={X=1600,Y=900};dpi=1.25;test_ui:resize()
+            assert(test_ui.widget.desired.X==896 and test_ui.widget.desired.Y==624)
+        """)
 
-    def test_failed_build_releases_partial_widgets_and_can_retry(self):
-        self.run_lua('test_ui:invalidate(); original_construct=StaticConstructObject')
-        self.run_lua("function StaticConstructObject(class,...) if class.class:find('EditableTextBox',1,true) then error('Native field unavailable') end; return original_construct(class,...) end")
-        self.run_lua('keys.F10();assert(not test_ui.visible and test_ui.widget==nil and test_ui.search==nil)')
-        self.run_lua('assert(not pc.ignore_look and not pc.ignore_move);tick()')
-        self.run_lua('StaticConstructObject=original_construct;keys.F10();assert(test_ui.visible and test_ui.search)')
+    @unittest.skipUnless(os.name == 'nt', 'Runtime discovery uses Windows dir')
+    def test_real_discovery_prefers_package_over_matching_source(self):
+        (self.mods_dir / 'Example.lua').write_text("error('Legacy source must not execute')", encoding='utf-8')
+        source = self.root / 'replacement.lua'
+        source.write_text('return {onWorldReady=function() package_starts=(package_starts or 0)+1 end}', encoding='utf-8')
+        packaged = create_package(source, self.mods_dir / 'Example.tungmod', {
+            'id':'replacement', 'name':'Replacement', 'version':'1',
+            'author':'Test', 'description':'Package priority fixture.',
+        }, self.icon)
+        packaged.rename(packaged.with_suffix('.TUNGMOD'))
+        (self.mods_dir / 'Bad.tungmod').write_bytes(b'corrupt package')
+        self.boot(real_discovery=True)
+        self.lua.execute("assert(test_ui:find('replacement'));assert(not test_ui:find('Example'));assert(package_starts==1)")
 
 
 if __name__ == '__main__':

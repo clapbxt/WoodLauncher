@@ -35,18 +35,35 @@ local function scan_mods()
         disabled_file:close()
     end
     local handle = io.popen('dir /b /a-d "' .. mods_dir:gsub('/', '\\') .. '" 2>nul')
-    if not handle then return end
+    if not handle then
+        print('[Wood] Could not scan Mods folder: ' .. mods_dir .. '\n')
+        return
+    end
+    local files, packaged_stems, loaded_ids = {}, {}, {}
     for filename in handle:lines() do
+        files[#files+1] = filename
+        local stem, extension = filename:match('^(.+)%.([%w]+)$')
+        if extension and extension:lower() == 'tungmod' then packaged_stems[stem:lower()] = true end
+    end
+    handle:close()
+    table.sort(files, function(a, b)
+        local ap, bp = a:lower():match('%.tungmod$') ~= nil, b:lower():match('%.tungmod$') ~= nil
+        if ap ~= bp then return ap end
+        return a:lower() < b:lower()
+    end)
+    for _, filename in ipairs(files) do
         local file_id, extension = filename:match('^(.+)%.([%w]+)$')
         extension = extension and extension:lower()
-        if file_id and (extension == 'lua' or extension == 'tungmod') and not file_id:match('^_') then
+        if file_id and (extension == 'lua' or extension == 'tungmod') and not file_id:match('^_')
+            and not (extension == 'lua' and packaged_stems[file_id:lower()]) then
             local path = mods_dir .. '/' .. filename
             local mod_id = file_id
             local metadata, source, icon_path
             local ok, definition = pcall(function()
                 if extension == 'tungmod' then
-                    metadata, source, icon_path = package_reader.read(path, data .. 'mod_')
+                    metadata, source, icon_path = package_reader.read(path, data .. 'mod_', loaded_ids)
                     mod_id = metadata.id
+                    if loaded_ids[mod_id] then error('Duplicate mod ID: ' .. mod_id) end
                     if disabled[mod_id] then return {} end
                     local chunk, err = load(source, '@' .. path)
                     if not chunk then error(err) end
@@ -72,16 +89,24 @@ local function scan_mods()
                 definition.version = metadata and metadata.version or definition.version or '1.0'
                 definition.author = metadata and metadata.author or definition.author or 'Unknown'
                 definition.description = metadata and metadata.description or definition.description or ''
+                definition.iconPath = icon_path or definition.iconPath
                 definition.enabled = enabled
-                table.insert(mods, definition)
+                if not loaded_ids[definition.id] then
+                    loaded_ids[definition.id] = true
+                    table.insert(mods, definition)
+                    print('[Wood] Loaded ' .. filename .. ' as ' .. definition.id .. '\n')
+                else
+                    print('[Wood] Skipped duplicate mod ID in ' .. filename .. '\n')
+                end
             else
-                table.insert(mods, {id=mod_id, name=mod_id, version='1.0', author='Unknown',
-                    description='', enabled=false, error=tostring(definition)})
+                if not loaded_ids[mod_id] then
+                    table.insert(mods, {id=mod_id, name=mod_id, version='1.0', author='Unknown',
+                        description='', enabled=false, error=tostring(definition)})
+                end
                 print('[Wood] Could not load ' .. mod_id .. ': ' .. tostring(definition) .. '\n')
             end
         end
     end
-    handle:close()
 end
 scan_mods()
 
@@ -125,7 +150,7 @@ local function mod_api(definition)
     }
 end
 ui = dofile(directory .. '/menu.lua')({
-    version='2.3.0', mods=mods, mod_api=mod_api,
+    version='2.3.2', mods=mods, mod_api=mod_api, logoPath=data .. 'wood-logo.png',
     loadIcon=function(path)
         local rendering = StaticFindObject('/Script/Engine.Default__KismetRenderingLibrary')
         return rendering:ImportFileAsTexture2D(pc, path)
@@ -213,4 +238,4 @@ LoopAsync(16, function()
     end)
     return false
 end)
-print('[Wood] Mod loader 2.3.0 loaded. F10 opens the mod menu.\n')
+print('[Wood] Mod loader 2.3.2 loaded. F10 opens the mod menu.\n')

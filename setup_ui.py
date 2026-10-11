@@ -24,6 +24,9 @@ class SetupWindow(tk.Tk):
         icon = Path(getattr(sys, '_MEIPASS', Path(__file__).parent)) / 'wood.ico'
         if icon.exists():
             self.iconbitmap(str(icon))
+        self.brand_logo = tk.PhotoImage(file=str(Path(getattr(sys, '_MEIPASS', Path(__file__).parent)) / 'WoodLauncherLogo.png'))
+        self.brand_small = self.brand_logo.subsample(2)
+        self.iconphoto(True, self.brand_logo)
         style = ttk.Style(self)
         style.theme_use('clam')
         style.configure('.', background=PANEL, foreground=FG, font=('Segoe UI', 10))
@@ -54,9 +57,8 @@ class SetupWindow(tk.Tk):
         rail.pack_propagate(False)
         logo = tk.Canvas(rail, width=160, height=70, bg='#15141e', highlightthickness=0)
         logo.pack(padx=26, pady=(30, 24))
-        logo.create_rectangle(0, 16, 36, 52, fill=ACCENT, outline='')
-        logo.create_text(18, 34, text='W', fill=BG, font=('Segoe UI', 18, 'bold'))
-        logo.create_text(50, 33, text='wood', anchor='w', fill=FG, font=('Segoe UI', 25, 'bold'))
+        logo.create_image(32, 35, image=self.brand_small)
+        logo.create_text(74, 33, text='wood', anchor='w', fill=FG, font=('Segoe UI', 25, 'bold'))
         self.label(rail, 'TUNG MOD TOOLKIT', 9, MUTED).pack(anchor='w', padx=28)
         self.label(rail, f'Setup / {version}', 10, MUTED).pack(anchor='w', padx=28, pady=(6, 42))
         self.steps = []
@@ -80,13 +82,7 @@ class SetupWindow(tk.Tk):
         hero.pack(fill='x', pady=(0, 14))
         art = tk.Canvas(hero, width=132, height=130, bg=BG, highlightthickness=0)
         art.pack(side='right', padx=(8, 0))
-        art.create_oval(8, 8, 124, 124, fill='#211a34', outline='#493864', width=1)
-        art.create_oval(24, 24, 108, 108, fill='#8e67dc', outline=PURPLE, width=2)
-        art.create_oval(35, 35, 97, 97, fill='#191522', outline='#bda2ff', width=2)
-        art.create_line(66, 46, 66, 66, 83, 77, fill=ACCENT, width=4)
-        art.create_oval(62, 62, 70, 70, fill=ACCENT, outline='')
-        art.create_text(15, 111, text='+', fill=ACCENT, font=('Segoe UI', 24))
-        art.create_text(116, 20, text='✦', fill=PURPLE, font=('Segoe UI', 17))
+        art.create_image(66, 65, image=self.brand_logo)
         self.label(hero, 'LET’S GET YOU SET UP' if not args.uninstall else 'TAKE A BREAK', 9, PURPLE).pack(anchor='w', pady=(3, 10))
         self.label(hero, 'Make time\nyour playground.' if not args.uninstall else 'Leave things\nas you found them.', 28, FG, bold=True).pack(anchor='w')
         self.label(main, 'Native mods. Time controls. Your next attempt, on your terms.'

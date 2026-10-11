@@ -19,8 +19,3 @@ The standalone executable contains the Python runtime and Tcl/Tk. Their bundled
 notices are included in `Wood-Licenses.txt`. The VDF parser is vdf 3.4 (MIT). PyInstaller
 uses its upstream license and bootloader exception. Build dependencies are pinned
 in `requirements-build.txt`; they are not copied into the source tree.
-
-## Website
-
-All Wood graphics are created from code in this repository. PaperMC supplied
-visual direction only; no PaperMC branding or artwork is distributed.

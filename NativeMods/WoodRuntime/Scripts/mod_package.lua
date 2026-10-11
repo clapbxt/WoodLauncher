@@ -56,7 +56,7 @@ local function valid_png(icon)
         and width * height <= 4*1024*1024
 end
 
-function package.read(path, icon_path)
+function package.read(path, icon_path, loaded_ids)
     local file, err = io.open(path, 'rb')
     if not file then error('Could not open TUNG mod package: ' .. tostring(err)) end
     local size = file:seek('end')
@@ -81,6 +81,9 @@ function package.read(path, icon_path)
         if #source == 0 then error('TUNG mod package contains an empty Lua source.') end
         if not valid_png(icon) then error('TUNG mod package contains an invalid or oversized PNG icon.') end
         local metadata = parse_metadata(metadata_bytes)
+        if loaded_ids and loaded_ids[metadata.id] then
+            error('Duplicate mod ID: ' .. metadata.id)
+        end
         local extracted_icon
         if #icon > 0 then
             extracted_icon = icon_path .. metadata.id .. '.png'

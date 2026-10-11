@@ -1,9 +1,9 @@
 {
-  "id": "TimeWarp",
-  "name": "Time Warp",
-  "version": "2.3.0",
+  "id": "WoodRuntime",
+  "name": "Wood",
+  "version": "2.3.2",
   "author": "Wood",
-  "description": "Native Unreal world-speed control, presets, hotkeys, and persistent in-game settings.",
+  "description": "Lua and TUNG package mod loader with an in-game settings menu.",
   "runtime": "UE4SS",
   "menu_key": "F10"
 }
