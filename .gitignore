@@ -10,3 +10,5 @@ site/.openai/
 .venv/
 site/.git/
 site/.gitignore
+
+.netlify/

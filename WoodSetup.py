@@ -46,48 +46,13 @@ def handoff_uninstall(game, silent=False, report=None):
     subprocess.Popen(args, cwd=temp.parent)
 
 
-class Setup(tk.Tk):
-    def __init__(self, args):
-        super().__init__(); self.args = args; self.jobs = queue.Queue()
-        icon = Path(getattr(sys, '_MEIPASS', Path(__file__).parent)) / 'wood.ico'
-        if icon.exists(): self.iconbitmap(str(icon))
-        self.title('Wood | Uninstall' if args.uninstall else 'Wood | Setup')
-        self.geometry('760x580'); self.minsize(720, 540); self.configure(bg=BG)
-        style = ttk.Style(self); style.theme_use('clam')
-        style.configure('.', background=PANEL, foreground=FG, font=('Segoe UI', 10))
-        style.configure('TButton', padding=(16, 10), borderwidth=0, background='#2b4356')
-        style.configure('Accent.TButton', background=ACCENT, foreground=BG, font=('Segoe UI', 11, 'bold'))
-        style.map('Accent.TButton', background=[('active', '#88efd9')])
-        def label(parent, text, size=11, color=FG):
-            return tk.Label(parent, text=text, bg=parent['bg'], fg=color, font=('Segoe UI', size), justify='left', anchor='w')
-        header = tk.Frame(self, bg=BG); header.pack(fill='x', padx=32, pady=24)
-        label(header, 'WOOD', 28, ACCENT).pack(side='left')
-        label(header, f'  /  SETUP {VERSION}', 11, MUTED).pack(side='left')
-        panel = tk.Frame(self, bg=PANEL, padx=24, pady=24); panel.pack(fill='both', expand=True, padx=32)
-        label(panel, 'Remove Wood from TUNG' if args.uninstall else 'Your next run starts here.', 23).pack(anchor='w')
-        label(panel, 'User mods and personal settings are preserved.' if args.uninstall else 'One install. Native mods, time controls, and a launcher ready to go.', 10, MUTED).pack(anchor='w', pady=(8, 24))
-        label(panel, 'TUNG INSTALLATION', 10, MUTED).pack(anchor='w', pady=(0, 8))
-        found = find_games()
-        self.path = tk.StringVar(value=str(args.game_dir or (found[0] if found else '')))
-        row = tk.Frame(panel, bg=PANEL); row.pack(fill='x')
-        ttk.Entry(row, textvariable=self.path).pack(side='left', fill='x', expand=True, ipady=8)
-        ttk.Button(row, text='Browse…', command=self.browse).pack(side='right', padx=(10, 0))
-        self.steam = tk.BooleanVar(value=not args.no_steam)
-        if not args.uninstall:
-            ttk.Checkbutton(panel, text='Configure Steam to launch modded TUNG', variable=self.steam).pack(anchor='w', pady=(20, 4))
-        label(panel, 'Close TUNG and Wood before continuing.\nExit Steam if changing or restoring Steam launch options.', 10, MUTED).pack(anchor='w', pady=(16, 12))
-        self.status = label(panel, 'Ready to uninstall.' if args.uninstall else 'Includes the runtime, launcher, native Time Warp, and uninstaller.', 10)
-        self.status.configure(wraplength=620); self.status.pack(anchor='w', pady=10)
-        self.progress = ttk.Progressbar(panel, mode='indeterminate'); self.progress.pack(fill='x', pady=(6, 0))
-        bottom = tk.Frame(self, bg=BG); bottom.pack(fill='x', padx=32, pady=22)
-        label(bottom, 'TUNG · Windows x64', 10, MUTED).pack(side='left')
-        self.button = ttk.Button(bottom, text='Uninstall Wood' if args.uninstall else 'Install Wood', style='Accent.TButton', command=self.run)
-        self.button.pack(side='right')
-        self.protocol('WM_DELETE_WINDOW', self.close)
+from setup_ui import SetupWindow, ACCENT, MUTED
 
-    def close(self):
-        if str(self.button['state']) == 'disabled': return
-        self.destroy()
+
+class Setup(SetupWindow):
+    def __init__(self, args):
+        super().__init__(args, VERSION, find_games())
+        self.jobs = queue.Queue()
 
     def browse(self):
         path = filedialog.askdirectory(title='Choose your TUNG installation', parent=self)
@@ -95,8 +60,8 @@ class Setup(tk.Tk):
 
     def run(self):
         game = Path(self.path.get()).resolve()
-        self.button.configure(state='disabled'); self.progress.start(12)
-        self.status.configure(text='Restoring your installation…' if self.args.uninstall else 'Verifying and installing Wood…')
+        self.set_busy(True)
+        self.status.configure(text='Restoring your installationâ€¦' if self.args.uninstall else 'Verifying and installing Woodâ€¦')
         steam_enabled = self.steam.get()
         def work():
             try:
@@ -118,7 +83,10 @@ class Setup(tk.Tk):
         try: ok, message, game = self.jobs.get_nowait()
         except queue.Empty:
             self.after(100, self.finish); return
-        self.progress.stop(); self.status.configure(text=message, fg=ACCENT if ok else '#ffaf9e')
+        self.set_busy(False)
+        self.status.configure(text=message, fg=ACCENT if ok else '#ffaf9e')
+        self.set_step(2 if ok else 0)
+        self.stage.configure(text='ALL SET' if ok else 'NEEDS ATTENTION', fg=ACCENT if ok else '#ffaf9e')
         self.button.configure(state='normal', text='Finish' if ok else 'Try again', command=self.destroy if ok else self.run)
 
 

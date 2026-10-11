@@ -24,7 +24,7 @@ function object(class)
  function o:GetGlobalTimeDilation() return applied_speed or 1 end
  function o:SetGlobalTimeDilation(pc,speed) applied_speed=speed end
  function o:Create() local m=object('UserWidget');m.WidgetTree=object('WidgetTree');return m end
- for _,name in ipairs({'SetPadding','SetSize','SetBrushColor','SetColorAndOpacity','SetBackgroundColor','SetMinValue','SetMaxValue','SetStepSize','AddToViewport','SetAlignmentInViewport','SetPositionInViewport','SetDesiredSizeInViewport','SetIgnoreLookInput','SetIgnoreMoveInput','SetInputMode_GameAndUIEx','SetInputMode_GameOnly','SetInputMode_UIOnlyEx','RemoveFromParent'}) do o[name]=function() end end
+ for _,name in ipairs({'SetPadding','SetSize','SetBrushColor','SetColorAndOpacity','SetBackgroundColor','SetMinValue','SetMaxValue','SetStepSize','SetSliderBarColor','SetSliderHandleColor','AddToViewport','SetAlignmentInViewport','SetPositionInViewport','SetDesiredSizeInViewport','SetIgnoreLookInput','SetIgnoreMoveInput','SetInputMode_GameAndUIEx','SetInputMode_GameOnly','SetInputMode_UIOnlyEx','RemoveFromParent'}) do o[name]=function() end end
  table.insert(created,o);return o
 end
 pc=object('PlayerController')
@@ -46,9 +46,14 @@ function dofile(path)
  return real_dofile(path)
 end
 function contains(label) for _,o in ipairs(created) do if o.label==label then return true end end return false end
+function has_label(o,label)
+ if o.label==label then return true end
+ for _,child in ipairs(o.children) do if has_label(child,label) then return true end end
+ return false
+end
 function click(label)
  for _,o in ipairs(created) do o.hover=false end
- for i=#created,1,-1 do local o=created[i]; if o.class:find('Button',1,true) and o.children[1] and o.children[1].label==label then o.hover=true;keys.CLICK();return true end end
+ for i=#created,1,-1 do local o=created[i]; if o.class:find('Button',1,true) and has_label(o,label) then o.hover=true;keys.CLICK();return true end end
  return false
 end
 '''
@@ -63,12 +68,12 @@ class NativeMenuTests(unittest.TestCase):
         lua.execute("tick(); keys.F10()")
         self.assertTrue(lua.eval("contains('YOUR MODS')"))
         self.assertEqual(lua.globals().builds, 0)
-        self.assertTrue(lua.eval("click('Time Warp   >')"))
+        self.assertTrue(lua.eval("click('Time Warp')"))
         lua.execute('tick()')
         self.assertTrue(lua.eval("contains('TIME WARP')"))
         self.assertEqual(lua.globals().builds, 0)
         lua.execute('keys.ESCAPE()')
-        self.assertTrue(lua.eval("click('Example   >')"))
+        self.assertTrue(lua.eval("click('Example')"))
         self.assertEqual(lua.globals().builds, 1)
         self.assertTrue(lua.eval("click('Example settings')"))
         self.assertEqual(lua.globals().callbacks, 1)
@@ -76,7 +81,7 @@ class NativeMenuTests(unittest.TestCase):
         # Hovering a detached old widget must not dispatch its previous callback.
         lua.execute("click('Example settings')")
         self.assertEqual(lua.globals().callbacks, 1)
-        self.assertTrue(lua.eval("click('Disabled   >')"))
+        self.assertTrue(lua.eval("click('Disabled')"))
         self.assertTrue(lua.eval("contains('Disabled. Enable in the launcher and restart TUNG.')"))
         self.assertEqual(lua.globals().builds, 1)
 

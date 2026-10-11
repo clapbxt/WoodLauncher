@@ -24,11 +24,11 @@ GAME = BIN / 'TUNG-Win64-Shipping.exe'
 DATA.mkdir(exist_ok=True)
 logging.basicConfig(filename=DATA / 'launcher.log', level=logging.INFO,
                     format='%(asctime)s %(levelname)s %(message)s')
-BG = '#111b25'
-PANEL = '#1b2936'
-FG = '#e4edf4'
-MUTED = '#9bb0c1'
-ACCENT = '#58dec1'
+BG = '#101017'
+PANEL = '#191922'
+FG = '#f4f2fc'
+MUTED = '#aaa7be'
+ACCENT = '#c4f46b'
 
 
 def game_running():
@@ -122,14 +122,16 @@ class Launcher(tk.Tk):
         style = ttk.Style(self)
         style.theme_use('clam')
         style.configure('.', background=PANEL, foreground=FG, font=('Segoe UI', 10))
-        style.configure('TButton', padding=(14, 9), background='#2b4356', borderwidth=0)
-        style.map('TButton', background=[('active', '#385c71')], foreground=[('disabled', MUTED)])
+        style.configure('TButton', padding=(14, 9), background='#292737', borderwidth=0)
+        style.map('TButton', background=[('active', '#39334d')], foreground=[('disabled', MUTED)])
         style.configure('Accent.TButton', background=ACCENT, foreground=BG, font=('Segoe UI', 10, 'bold'))
-        style.map('Accent.TButton', background=[('active', '#88efd9')])
+        style.map('Accent.TButton', background=[('active', '#d6ff91')])
         style.configure('Treeview', background=PANEL, fieldbackground=PANEL, foreground=FG, rowheight=38, borderwidth=0)
-        style.configure('Treeview.Heading', background='#243849', foreground=MUTED, padding=9)
-        style.map('Treeview', background=[('selected', '#2e5261')])
-        style.configure('TScale', troughcolor='#304857', background=PANEL)
+        style.configure('Treeview.Heading', background='#272332', foreground=MUTED, padding=9)
+        style.map('Treeview', background=[('selected', '#493568')])
+        style.configure('TEntry', fieldbackground=BG, foreground=FG, insertcolor=FG, bordercolor='#3b374b', padding=(10, 8))
+        style.configure('TCheckbutton', background=PANEL, foreground=FG, indicatorbackground=BG, indicatorforeground=ACCENT)
+        style.configure('TScale', troughcolor='#39304d', background=PANEL)
 
     def label(self, parent, text='', size=10, color=FG, **kwargs):
         return tk.Label(parent, text=text, bg=parent.cget('bg'), fg=color,
@@ -139,7 +141,7 @@ class Launcher(tk.Tk):
         header = tk.Frame(self, bg=BG)
         header.pack(fill='x', padx=28, pady=(22, 16))
         self.label(header, 'WOOD', 29, ACCENT).pack(side='left')
-        self.label(header, 'TUNG / 2.1.1', 12, MUTED).pack(side='left', padx=18)
+        self.label(header, 'TUNG / 2.1.2', 12, MUTED).pack(side='left', padx=18)
         self.connection = self.label(header, 'Runtime offline', 11, MUTED)
         self.connection.pack(side='right')
         toolbar = tk.Frame(self, bg=BG)

@@ -1,0 +1,3 @@
+# Deploy the prebuilt site/dist folder. The Windows installer is built locally.
+[build]
+  publish = "site/dist"

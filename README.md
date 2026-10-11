@@ -66,7 +66,7 @@ license is included in the bundled archive and installed runtime.
 ## Prepare a GitHub release
 
 The local repository is prepared but has not been pushed. When ready, create an
-empty repository, add it as `origin`, and push `main`. Push a `v2.1.1` tag to run
+empty repository, add it as `origin`, and push `main`. Push a `v2.1.2` tag to run
 the release workflow. The workflow publishes the standalone installer and
 checksums as GitHub release assets. `workflow_dispatch` builds an artifact without
 publishing a release.
@@ -74,6 +74,12 @@ publishing a release.
 The website currently serves the built installer directly. Run `python site/build.py`
 after each release build to update the download and displayed checksum. Serve
 `site/dist` with any static host; no server-side runtime or account is needed.
+
+## Netlify hosting
+
+Run `python scripts/package_netlify.py` after building the Windows release.
+Extract `release/Wood-Netlify.zip` and upload the extracted folder to Netlify.
+Full upload, update, and domain instructions: [site/NETLIFY.md](site/NETLIFY.md).
 
 ## License
 

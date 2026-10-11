@@ -15,7 +15,7 @@ def make_icon(path):
     for y in range(256):
         rows.append(0)
         for x in range(256):
-            rows.extend((89,223,193,255) if inside(x/6.4,y/6.4) else (17,27,37,255))
+            rows.extend((196,244,107,255) if inside(x/6.4,y/6.4) else (16,16,23,255))
     def chunk(name, data):
         return struct.pack('>I',len(data))+name+data+struct.pack('>I',zlib.crc32(name+data)&0xffffffff)
     png = b'\x89PNG\r\n\x1a\n'+chunk(b'IHDR',struct.pack('>IIBBBBB',256,256,8,6,0,0,0))+chunk(b'IDAT',zlib.compress(rows))+chunk(b'IEND',b'')

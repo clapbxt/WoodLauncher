@@ -1,0 +1,11 @@
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  X-Frame-Options: DENY
+
+/downloads/*
+  Cache-Control: public, max-age=0, must-revalidate
+
+/downloads/WoodSetup.exe
+  Content-Type: application/octet-stream
+  Content-Disposition: attachment; filename="WoodSetup.exe"
