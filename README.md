@@ -1,23 +1,28 @@
 # Wood for TUNG
 
-Native mod menus, Time Warp, a Windows launcher, and a single-file installer.
+An in-game native mod menu, Time Warp, Wood Utilities, a live Coordinates overlay, a lightweight Steam shortcut, and a single-file installer.
 
 ## Users
 
-Download **WoodSetup.exe** from the download site. Close TUNG and Wood; exit Steam
-if setup will configure launch options. Run setup, select your TUNG folder, and
-install. Reopen Steam, launch TUNG, and press **F10** for the mod list. Select a
+Download **WoodSetup.exe** from the download site. Close TUNG and Wood, then run
+setup and select your TUNG folder. The installer does not change Steam launch
+options and places a small **WoodLauncher.exe** Steam shortcut beside the game.
+Launch TUNG through Steam and press **F10** for the mod list. Select a
 mod to open its settings; Back or Escape returns to the list. Search and the All,
 Active, and Settings filters keep larger libraries easy to browse. The list stays
 visible beside each mod's Settings and Info pages.
 
-The installer bundles Python and the pinned UE4SS runtime. No separate dependency
-installation is required. Run **WoodLauncher.exe** in your game folder to manage
-mods. Uninstall through Windows Installed Apps or **WoodUninstall.exe**.
+The installer bundles Python, the pinned UE4SS runtime, and the included mods.
+No separate dependency installation is required. Manage mods from the in-game
+F10 menu to enable or disable installed mods. Wood Launcher simply opens TUNG
+through Steam; the UE4SS proxy installed by setup loads Wood automatically when
+the game starts. Uninstall through Windows Installed Apps or **WoodUninstall.exe**.
+Run **WoodModPackager.exe** to bundle a Lua mod, its metadata, and an optional
+PNG icon into one `.tungmod` file. Copy that file into the game’s `Mods` folder
+and restart TUNG; packaged icons appear in the in-game mod list.
 
 Uninstall preserves personal settings and custom mods. It restores owned files
 from backups and leaves files you modified afterward, reporting any conflicts.
-Steam options are restored only if they still match the installed value.
 
 ## Time Warp
 
@@ -46,23 +51,45 @@ live game input. Reset sensitivity restores 1.00x. Inversion and smoothing
 controls have been removed; TUNG keeps its vanilla direction and smoothing.
 Preferences save automatically in `.wood/WoodUtilities.settings.ini` and survive
 updates and uninstall. These controls never edit Windows mouse settings or game
-save files. Disable the mod in Wood Launcher and restart to return to vanilla.
+save files. Disable Wood Utilities in the F10 mod menu and restart to return to
+vanilla.
+
+## Coordinates
+
+The Coordinates mod is a standalone Lua file included with Wood Setup and
+available separately from the official mod collection. It shows live world X/Y/Z
+in a configurable screen corner, with Simple (0), Detailed (2), or Exact (up to 7)
+decimal places. The overlay refreshes about ten times per second.
+
+When installed, Coordinates also writes live position and grounded-state samples
+to `.wood/Coordinates.live` for the separate LiveSplit Hedge split. The
+autosplitter ZIP does not include or install the mod.
 
 ## Build on Windows
 
 Python 3.10 (x64):
 
 ```powershell
-python -m venv .venv
-.venv/Scripts/python -m pip install -r requirements-build.txt
-.venv/Scripts/python -m unittest discover -s tests -v
-.venv/Scripts/python scripts/build_release.py
-.venv/Scripts/python site/build.py
+py -3.10 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements-build.txt
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+.\.venv\Scripts\python.exe scripts\build_release.py
+.\.venv\Scripts\python.exe scripts\verify_distribution.py
+.\.venv\Scripts\python.exe scripts\package_netlify.py
 ```
 
-Outputs: `release/WoodSetup.exe`, `release/WoodLauncher.exe`, and SHA-256 checksums.
-The single executable dispatches as setup, launcher, or uninstaller according to
-its installed filename. All modes share a bundled Python runtime.
+The build produces `release/WoodSetup.exe`, a small `release/WoodLauncher.exe`,
+`release/WoodModPackager.exe`, and `release/SHA256SUMS.txt`. The installer embeds the UE4SS loader and the
+standalone mods from `Mods/`, and installs the launcher beside the game. The
+launcher has no mod manager or injector: it opens the Steam game URI; setup's
+UE4SS `dwmapi.dll` proxy is the component that hooks into TUNG.
+After installation it copies itself as `WoodUninstall.exe` into the game folder;
+the native mod menu runs inside TUNG.
+`scripts/package_netlify.py` rebuilds and verifies `site/dist`, then creates
+`release/Wood-Netlify.zip` with the site, functions, and Netlify CLI config.
+It is a deployment-source archive, not a static drag-and-drop upload. Extract it,
+install Node dependencies, configure the private `MOD_ADMIN_TOKEN` in Netlify,
+and deploy through Netlify CLI; see [site/NETLIFY.md](site/NETLIFY.md).
 
 The build verifies the official pinned UE4SS archive before packaging. Initial
 download needs internet; user installation is offline. Executables are currently
@@ -70,16 +97,16 @@ unsigned. Game updates may require runtime changes.
 
 ## Repository layout
 
-- `WoodLauncher.py`: searchable mod library and acknowledged runtime controls.
 - `WoodSetup.py`: setup UI, uninstall UI, CLI, and Windows Installed Apps entry.
+- `WoodLauncher.py`: minimal Steam URI shortcut; Wood's UE4SS proxy loads in-game.
+- `WoodModPackager.py`: GUI that packages Lua source, metadata, and optional PNG artwork.
 - `setup_core.py`: file ownership journal, backup, rollback, and uninstall.
-- `steam_setup.py`: Steam libraries and reversible account launch options.
+- `steam_setup.py`: Steam library discovery; no launch-option edits.
 - `wood_runtime.py`: native deployment and local command/status bridge.
-- `NativeMods/WoodRuntime`: UE4SS Lua runtime and native Unreal widgets.
+- `NativeMods/WoodRuntime`: UE4SS Lua runtime, package reader, and native Unreal widgets.
   `Scripts/menu.lua` owns library browsing and settings presentation.
-- `NativeMods/WoodUtilities`: native speedrunner, audio, and mouse controls.
-- `NativeMods/_Example`: extension template with persistent native settings.
-- `tests`: runtime, installation, and Steam restoration regression tests.
+- `Mods`: standalone Lua mods loaded from the game's `Mods` folder, including Coordinates.
+- `tests`: runtime, mod menu, utilities, and installation regression tests.
 - `site`: static website generator; `dist` contains deployable pages.
 - `.github/workflows/release.yml`: Windows tests, builds, and tagged releases.
 
@@ -90,20 +117,23 @@ license is included in the bundled archive and installed runtime.
 ## Prepare a GitHub release
 
 The local repository is prepared but has not been pushed. When ready, create an
-empty repository, add it as `origin`, and push `main`. Push a `v2.2.3` tag to run
+empty repository, add it as `origin`, and push `main`. Push a `v2.3.0` tag to run
 the release workflow. The workflow publishes the standalone installer and
 checksums as GitHub release assets. `workflow_dispatch` builds an artifact without
 publishing a release.
 
-The website currently serves the built installer directly. Run `python site/build.py`
-after each release build to update the download and displayed checksum. Serve
-`site/dist` with any static host; no server-side runtime or account is needed.
+After each release build, run `.\.venv\Scripts\python.exe scripts\package_netlify.py`
+to refresh the download and checksum and create `release/Wood-Netlify.zip`. The
+generated `site/dist` is also a static site that can be served by any host; it
+needs no server-side runtime or account.
 
 ## Netlify hosting
 
-Run `python scripts/package_netlify.py` after building the Windows release.
-Extract `release/Wood-Netlify.zip` and upload the extracted folder to Netlify.
-Full upload, update, and domain instructions: [site/NETLIFY.md](site/NETLIFY.md).
+Run `.\.venv\Scripts\python.exe scripts\package_netlify.py` after building the
+Windows release.
+Extract `release/Wood-Netlify.zip` and deploy the extracted project using
+Netlify CLI. Netlify Drop does not deploy its serverless catalog function.
+Full deployment and curator-token instructions: [site/NETLIFY.md](site/NETLIFY.md).
 
 ## License
 

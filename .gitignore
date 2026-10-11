@@ -12,3 +12,4 @@ site/.git/
 site/.gitignore
 
 .netlify/
+node_modules/

@@ -1,4 +1,4 @@
-"""Installation and file IPC for Wood's in-process Unreal runtime."""
+"""Installation for Wood's in-process Unreal runtime."""
 from __future__ import annotations
 
 import hashlib
@@ -7,8 +7,6 @@ import math
 import os
 from pathlib import Path
 import shutil
-import time
-import threading
 import zipfile
 import sys
 
@@ -16,7 +14,6 @@ BASE = Path(sys.executable if getattr(sys, 'frozen', False) else __file__).resol
 BIN = BASE / 'TUNG' / 'Binaries' / 'Win64'
 DATA = BASE / '.wood'
 RUNTIME = BIN / 'ue4ss'
-SOURCE = BASE / 'NativeMods' / 'WoodRuntime'
 RUNTIME_VERSION = 'UE4SS_v3.0.1-1164-g5e627997'
 RUNTIME_SHA256 = '3c72142a383e25e9f9553ac9e4d5677aa572e98cb369cac57200efb2e381e603'
 RUNTIME_URL = f'https://github.com/UE4SS-RE/RE-UE4SS/releases/download/experimental-latest/{RUNTIME_VERSION}.zip'
@@ -46,15 +43,17 @@ def valid_speed(value):
 
 def installed():
     return all(p.is_file() for p in (BIN / 'dwmapi.dll', RUNTIME / 'UE4SS.dll',
-                                    RUNTIME / 'Mods/WoodRuntime/Scripts/main.lua'))
+                                     RUNTIME / 'Mods/WoodRuntime/Scripts/main.lua'))
 
 
-def install_runtime(archive=None):
+def install_runtime(archive=None, source=None):
     """Deploy only Wood-owned files; preserve other mods and loader settings."""
     if not (BIN / 'TUNG-Win64-Shipping.exe').is_file():
         raise FileNotFoundError('TUNG shipping executable is missing.')
-    if not SOURCE.is_dir():
-        raise FileNotFoundError('NativeMods/WoodRuntime is missing from this installation.')
+    if source is None:
+        source = BASE / 'NativeMods' / 'WoodRuntime'
+    if not source.is_dir():
+        raise FileNotFoundError('WoodRuntime source is missing from this installation.')
     archive = Path(archive or DATA / 'cache/UE4SS.zip')
     new_install = not (RUNTIME / 'UE4SS.dll').exists()
     if new_install:
@@ -78,26 +77,12 @@ def install_runtime(archive=None):
         raise FileNotFoundError('The UE4SS proxy dwmapi.dll is missing. Restore it from the official archive.')
     destination = RUNTIME / 'Mods/WoodRuntime'
     destination.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(SOURCE, destination, dirs_exist_ok=True)
+    shutil.copytree(source, destination, dirs_exist_ok=True)
     # Embed the resolved root rather than relying on Steam's current directory.
     root = str(BASE).replace('\\', '/')
     atomic_write(destination / 'Scripts/paths.lua', 'return ' + json.dumps(root, ensure_ascii=False) + '\n')
-    disabled = load_json(BASE / 'wood_config.json', {}).get('mods_disabled', [])
-    extensions = []
-    for manifest in sorted((BASE / 'NativeMods').glob('*/manifest.json')):
-        if manifest.parent.name.startswith('_') or manifest.parent.name == 'WoodRuntime': continue
-        info = load_json(manifest, {})
-        mod_id = info.get('id', manifest.parent.name)
-        if not isinstance(mod_id, str) or not mod_id.replace('_', '').isalnum():
-            raise ValueError(f'Invalid native mod id in {manifest}')
-        script = manifest.parent / 'wood.lua'
-        if script.is_file():
-            enabled = mod_id not in disabled and info.get('enabled', True)
-            fields = {'id':mod_id, 'path':str(script).replace('\\', '/'), 'name':str(info.get('name',mod_id)),
-                      'version':str(info.get('version','1.0')), 'description':str(info.get('description','')), 'author':str(info.get('author','Local mod'))}
-            extensions.append('{' + ', '.join(key+'='+json.dumps(value,ensure_ascii=False) for key,value in fields.items())
-                              + ', enabled=' + ('true' if enabled else 'false') + '}')
-    atomic_write(destination / 'Scripts/extensions.lua', 'return {\n' + ',\n'.join(extensions) + '\n}\n')
+    # Create the user-facing Mods folder where single-file mods are dropped.
+    (BASE / 'Mods').mkdir(exist_ok=True)
     modlist = RUNTIME / 'Mods/mods.txt'
     lines = modlist.read_text(encoding='utf-8-sig').splitlines() if modlist.exists() else []
     lines = [line for line in lines if line.split(':')[0].strip() != 'WoodRuntime']
@@ -108,38 +93,4 @@ def install_runtime(archive=None):
             lines[i] = line.split(':')[0].strip() + ' : 0'
     atomic_write(modlist, 'WoodRuntime : 1\n' + '\n'.join(lines) + '\n')
     DATA.mkdir(exist_ok=True)
-    if not (DATA / 'settings.ini').exists():
-        atomic_write(DATA / 'settings.ini', 'speed=1.0\nenabled=true\nrestore_on_travel=true\n')
     return destination
-
-
-class Bridge:
-    """Numbered commands are acknowledged by the game, never guessed as applied."""
-    ACTIONS = {'speed', 'enabled', 'menu', 'reset', 'restore_on_travel', 'selftest'}
-
-    def __init__(self):
-        self._lock = threading.Lock()
-        DATA.mkdir(exist_ok=True)
-
-    def send(self, action, value=''):
-        if action not in self.ACTIONS:
-            raise ValueError('Unknown runtime command')
-        if action == 'speed':
-            value = valid_speed(value)
-        elif action in {'enabled', 'restore_on_travel'}:
-            value = 'true' if value is True or value == 'true' else 'false'
-        with self._lock:
-            serial = time.time_ns()
-            with (DATA / 'commands.log').open('a', encoding='ascii') as queue:
-                queue.write(f'{serial}|{action}|{value}\n')
-        return serial
-
-    def status(self):
-        state = load_json(DATA / 'status.json', {})
-        # A status from a previous game session must not report a live connection.
-        try:
-            age = time.time() - (DATA / 'status.json').stat().st_mtime
-        except OSError:
-            age = 999
-        state['connected'] = age < 3 and state.get('ready') is True
-        return state

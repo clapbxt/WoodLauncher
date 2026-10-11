@@ -1,0 +1,54 @@
+.catalog-toolbar{display:flex;align-items:center;justify-content:space-between;gap:18px;margin:20px 0;color:var(--muted);font-size:14px}
+.catalog-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin:24px 0 70px}
+.mod-card{display:flex;flex-direction:column;gap:12px;border:1px solid var(--line);border-radius:8px;background:var(--panel);padding:24px}
+.mod-card h2{font-size:23px;margin:0}
+.mod-card p{margin:0;color:var(--muted)}
+.mod-meta{display:flex;flex-wrap:wrap;gap:8px;color:var(--muted);font-size:12px}
+.mod-tag{border:1px solid var(--line);border-radius:999px;padding:2px 9px}
+.mod-card .btn{align-self:flex-start;margin-top:auto}
+.catalog-empty,.form-panel{border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:24px}
+.catalog-empty{grid-column:1/-1;margin:0;color:var(--ink);font-size:16px}
+.catalog-error{color:#ffaf9e}
+.form-panel{max-width:800px;margin:26px 0 70px;padding:0;overflow:hidden;background:#fff;border-color:#cfc2df}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.form-field{display:flex;flex-direction:column;gap:8px;min-width:0}
+.form-field.full{grid-column:1/-1}
+.form-field label{font-weight:700;color:#30213e;font-size:14px}
+.form-field input,.form-field textarea{width:100%;background:#fff;color:#211c2e;border:1px solid #85769a;border-radius:6px;padding:12px 13px}
+.form-field input::placeholder,.form-field textarea::placeholder{color:#6b6178;opacity:1}
+.form-field input:focus,.form-field textarea:focus{border-color:#7541ed;outline:3px solid #7541ed44;outline-offset:1px}
+.form-field input[type=file]{padding:10px}
+.form-field textarea{min-height:120px;resize:vertical}
+.form-help,.form-status{color:#554b65;font-size:13px;line-height:1.55}
+.form-status{min-height:1.5em;margin:14px 0 0}
+.form-status.error{color:#9f2d1c}
+.form-status.success{color:#12633f}
+.form-status:empty{display:none}
+.token-guide{border:1px solid #394956;border-radius:10px;background:linear-gradient(145deg,#1b2b34,#18212b);padding:26px 30px;color:#edf4f7;margin:20px 0 26px}
+.token-guide .eyebrow{margin:0 0 10px}
+.token-guide h2,.form-section h2{font-size:23px;letter-spacing:-.3px;margin:0 0 10px;color:#f4f7fa}
+.token-guide p,.token-guide li{color:#d6e0e6;line-height:1.65}
+.token-guide p{margin:12px 0}
+.token-guide strong{color:#fff}
+.token-steps{padding-left:24px;margin:10px 0}
+.token-steps li{padding-left:4px;margin:12px 0}
+.token-command{border:1px solid #485c68;border-radius:7px;background:#0a1117;padding:16px 18px;margin:12px 0;white-space:pre;overflow-x:auto}
+.token-command code{background:none;padding:0;color:#b9f4e5;font:13px/1.65 Consolas,Monaco,monospace}
+.token-guide .form-help{color:#d6e0e6}
+.token-note{border-left:3px solid #efba68;background:#29251f;border-radius:0 6px 6px 0;padding:12px 15px;margin-top:20px!important}
+.admin-form .form-section{padding:24px 28px;border-bottom:1px solid #d9cde6;background:#f5f1fa}
+.admin-form .form-section:last-child{border-bottom:0}
+.admin-form .form-section>h2{margin-bottom:6px}
+.admin-form .form-help{margin:5px 0 16px}
+.admin-form .btn{margin-top:8px}
+.admin-form .form-status{color:#554b65}
+.admin-form .form-status.error{color:#9f2d1c}
+.admin-form .form-status.success{color:#12633f}
+@media(max-width:650px){
+  .catalog-grid,.form-grid{grid-template-columns:1fr}
+  .form-field.full{grid-column:auto}
+  .catalog-toolbar{align-items:flex-start;flex-direction:column}
+  .token-guide{padding:21px 19px}
+  .admin-form .form-section{padding:21px 19px}
+  .token-command{font-size:12px}
+}

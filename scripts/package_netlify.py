@@ -1,4 +1,4 @@
-"""Build, check, and package only public static assets for manual Netlify upload."""
+"""Bundle the static site and serverless function for a Netlify CLI deployment."""
 from pathlib import Path
 import hashlib
 import subprocess
@@ -12,23 +12,37 @@ def main():
     for script in ('build.py', 'verify.py'):
         subprocess.run([sys.executable, str(ROOT / 'site' / script)], check=True)
     site = ROOT / 'site/dist'
-    # An explicit allowlist excludes local host identity, caches, and credentials.
-    names = ['index.html', 'downloads.html', 'guides.html', 'developers.html',
-             'about.html', 'style.css', 'site.js', 'favicon.svg', '_headers',
-             'downloads/WoodSetup.exe', 'downloads/SHA256SUMS.txt']
+    files = [ROOT / 'netlify.toml', ROOT / 'package.json', ROOT / 'package-lock.json']
+    files += [path for path in site.rglob('*') if path.is_file()]
+    files += [path for path in (ROOT / 'site/functions').glob('*.mjs')
+              if not path.name.endswith('.test.mjs')]
+    names = {path.relative_to(ROOT).as_posix() for path in files}
+    required = {
+        'netlify.toml', 'package.json', 'package-lock.json',
+        'site/functions/mod-catalog.mjs', 'site/dist/mods.html',
+        'site/dist/admin.html', 'site/dist/live-split.html',
+        'site/dist/downloads/WoodSetup.exe', 'site/dist/downloads/WoodLauncher.exe',
+        'site/dist/downloads/WoodModPackager.exe',
+    }
+    assert required <= names, f'Missing deployment files: {sorted(required - names)}'
+
     output = ROOT / 'release/Wood-Netlify.zip'
+    output.parent.mkdir(exist_ok=True)
     temporary = output.with_suffix('.zip.tmp')
     with zipfile.ZipFile(temporary, 'w', zipfile.ZIP_DEFLATED) as bundle:
-        for name in names:
-            bundle.write(site / name, name)
+        for path in sorted(files):
+            bundle.write(path, path.relative_to(ROOT).as_posix())
     with zipfile.ZipFile(temporary) as bundle:
-        assert bundle.testzip() is None, 'Upload archive is corrupt'
-        assert set(bundle.namelist()) == set(names)
-        actual = hashlib.sha256(bundle.read('downloads/WoodSetup.exe')).hexdigest()
-        assert actual in bundle.read('downloads.html').decode('utf-8')
-        assert actual in bundle.read('downloads/SHA256SUMS.txt').decode('utf-8')
+        assert bundle.testzip() is None, 'Deployment archive is corrupt'
+        assert set(bundle.namelist()) == names
+        site_checksum = hashlib.sha256(bundle.read('site/dist/downloads/WoodSetup.exe')).hexdigest()
+        assert site_checksum in bundle.read('site/dist/downloads.html').decode('utf-8')
+        admin_page = bundle.read('site/dist/admin.html').decode('utf-8')
+        assert 'MOD_ADMIN_TOKEN' in admin_page
+        assert 'type="password"' in admin_page
     temporary.replace(output)
-    print(f'Netlify upload package: {output}')
+    print(f'Netlify CLI deployment bundle: {output}')
+    print('Extract it, run npm ci, link the site with Netlify CLI, configure MOD_ADMIN_TOKEN, NETLIFY_SITE_ID, and NETLIFY_AUTH_TOKEN in Netlify, then deploy site/dist.')
 
 
 if __name__ == '__main__':

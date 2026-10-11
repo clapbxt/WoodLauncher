@@ -103,14 +103,9 @@ class SetupWindow(tk.Tk):
         self.path_entry.pack(side='left', fill='x', expand=True)
         self.browse_button = ttk.Button(field, text='Browse…', command=self.browse)
         self.browse_button.pack(side='right', padx=(10, 0))
-        self.steam = tk.BooleanVar(value=not args.no_steam)
-        self.steam_check = None
-        if not args.uninstall:
-            self.steam_check = ttk.Checkbutton(card, text='Launch with Wood through Steam', variable=self.steam)
-            self.steam_check.pack(anchor='w', pady=(20, 0))
-            self.label(card, 'Your existing game arguments are kept.', 9, MUTED).pack(anchor='w', padx=22, pady=(6, 0))
+
         self.label(card, 'Before continuing', 10, FG, bold=True).pack(anchor='w', pady=(20, 5))
-        self.label(card, 'Close TUNG and Wood. Exit Steam if changing launch options.', 9, MUTED).pack(anchor='w')
+        self.label(card, 'Close TUNG and Wood. Steam can stay open.', 9, MUTED).pack(anchor='w')
 
         features = tk.Frame(main, bg=BG)
         features.pack(fill='x', pady=(14, 0))
@@ -145,7 +140,8 @@ class SetupWindow(tk.Tk):
 
     def set_busy(self, busy):
         self.busy = busy
-        for control in (self.button, self.path_entry, self.browse_button, self.steam_check):
+        for control in ([self.button, self.path_entry, self.browse_button]
+                        + getattr(self, 'mod_checks', [])):
             if control is not None:
                 control.configure(state='disabled' if busy else 'normal')
         if busy:

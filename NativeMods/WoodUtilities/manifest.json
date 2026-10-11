@@ -1,9 +1,0 @@
-{
-  "id": "WoodUtilities",
-  "name": "Wood Utilities",
-  "version": "1.0.3",
-  "author": "Wood",
-  "enabled": true,
-  "runtime": "UE4SS",
-  "description": "Automatic speedrunner mode, audio levels, and comfortable mouse controls."
-}

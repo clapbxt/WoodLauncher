@@ -10,7 +10,7 @@ import zipfile
 import wood_runtime as runtime
 import steam_setup
 
-VERSION = '2.2.3'
+VERSION = '2.3.0'
 
 
 def digest(path):
@@ -32,7 +32,7 @@ def bind_runtime(game):
     runtime.SOURCE = game / 'NativeMods/WoodRuntime'
 
 
-def require_closed(game, steam=False):
+def require_closed(game):
     if (game / '.wood/status.json').exists():
         import time
         if time.time() - (game / '.wood/status.json').stat().st_mtime < 3:
@@ -57,10 +57,8 @@ def require_closed(game, steam=False):
         more = kernel.Process32FirstW(snapshot, ctypes.byref(entry))
         while more:
             exe = entry.name.lower()
-            if exe in {'tung.exe', 'tung-win64-shipping.exe', 'woodlauncher.exe'}:
-                raise RuntimeError('Close TUNG and the Wood launcher before setup.')
-            if steam and exe == 'steam.exe':
-                raise RuntimeError('Exit Steam from Steam → Exit before setup changes launch options. You can reopen Steam afterward.')
+            if exe in {'tung.exe', 'tung-win64-shipping.exe'}:
+                raise RuntimeError('Close TUNG before setup.')
             more = kernel.Process32NextW(snapshot, ctypes.byref(entry))
     finally:
         kernel.CloseHandle(snapshot)
@@ -124,15 +122,19 @@ class Journal:
             self.path.write_bytes(self.original)
 
 
-def install(game, payload, installer, configure_steam=True, root=None, check_running=True):
+def install(game, payload, installer, check_running=True):
     game = validate_game(game); payload = Path(payload)
-    if check_running: require_closed(game, configure_steam)
+    if check_running: require_closed(game)
     bind_runtime(game)
     archive = payload / 'UE4SS.zip'
     if digest(archive) != runtime.RUNTIME_SHA256:
         raise ValueError('Bundled runtime failed SHA-256 verification.')
+    mod_sources = sorted((payload / 'Mods').glob('*.lua'))
+    required_mods = {'TimeWarp.lua', 'WoodUtilities.lua', 'Coordinates.lua'}
+    missing_mods = required_mods - {mod.name for mod in mod_sources}
+    if missing_mods:
+        raise FileNotFoundError(f'Bundled mod source(s) are missing: {", ".join(sorted(missing_mods))}')
     journal = Journal(game)
-    steam_undo = {}
     new_loader = not (runtime.RUNTIME / 'UE4SS.dll').exists()
     try:
         # A foreign proxy may belong to another loader; do not silently replace it.
@@ -149,29 +151,24 @@ def install(game, payload, installer, configure_steam=True, root=None, check_run
                         lines = content.decode('utf-8-sig').splitlines()
                         content = ('\n'.join(line.split(':')[0].strip() + ' : 0' if line.split(':')[0].strip() in debug else line for line in lines) + '\n').encode()
                     journal.put(Path('TUNG/Binaries/Win64') / info.filename, content, replace=False)
-        for source in (payload / 'NativeMods').rglob('*'):
-            if source.is_file():
-                journal.put(Path('NativeMods') / source.relative_to(payload / 'NativeMods'), source.read_bytes())
-        journal.put('WoodLauncher.exe', Path(installer).read_bytes())
         journal.put('WoodUninstall.exe', Path(installer).read_bytes())
+        launcher = payload / 'WoodLauncher.exe'
+        if not launcher.is_file():
+            raise FileNotFoundError('Bundled WoodLauncher.exe is missing.')
+        journal.put('WoodLauncher.exe', launcher.read_bytes())
         journal.put('Wood-Licenses.txt', (payload / 'Wood-Licenses.txt').read_bytes())
         journal.put('.wood/cache/UE4SS.zip', archive.read_bytes(), replace=False)
-        generated = [runtime.RUNTIME / 'Mods/mods.txt', runtime.RUNTIME / 'Mods/WoodRuntime/Scripts/paths.lua',
-                     runtime.RUNTIME / 'Mods/WoodRuntime/Scripts/extensions.lua']
+        generated = [runtime.RUNTIME / 'Mods/mods.txt', runtime.RUNTIME / 'Mods/WoodRuntime/Scripts/paths.lua']
         generated += [runtime.RUNTIME / 'Mods/WoodRuntime' / source.relative_to(payload / 'NativeMods/WoodRuntime')
                       for source in (payload / 'NativeMods/WoodRuntime').rglob('*') if source.is_file()]
         for path in generated: journal.capture(path)
-        runtime.install_runtime(archive)
+        runtime.install_runtime(archive, payload / 'NativeMods/WoodRuntime')
         for path in generated: journal.record(path)
-        if configure_steam:
-            def write(path, text):
-                steam_undo[path] = path.read_bytes()
-                runtime.atomic_write(path, text)
-            steam_setup.configure(root or steam_setup.steam_root(), game, journal.data['steam'], write)
+        for mod in mod_sources:
+            journal.put(Path('Mods') / mod.name, mod.read_bytes())
         journal.save()
         return journal.data
     except Exception:
-        for path, content in steam_undo.items(): path.write_bytes(content)
         journal.rollback()
         raise
 
@@ -181,7 +178,7 @@ def uninstall(game, check_running=True):
     journal = Journal(game)
     if journal.original is None:
         raise RuntimeError('No Wood installation record found. No files were removed.')
-    if check_running: require_closed(game, bool(journal.data['steam']))
+    if check_running: require_closed(game)
     conflicts = steam_setup.restore(journal.data['steam'], runtime.atomic_write)
     remaining = {}
     for relative, record in reversed(list(journal.data['files'].items())):

@@ -1,4 +1,4 @@
-"""Steam discovery and reversible launch-option edits. No account secrets are read."""
+"""Steam discovery only. No launch-option edits needed; UE4SS loads via proxy DLL."""
 from pathlib import Path
 import os
 import vdf
@@ -39,57 +39,11 @@ def find_games(root=None):
     return list(dict.fromkeys(games))
 
 
-def apps_node(document):
-    node = document
-    for key in ('UserLocalConfigStore', 'Software', 'Valve', 'Steam', 'apps'):
-        actual = next((k for k in node if k.lower() == key.lower()), key)
-        node = node.setdefault(actual, {})
-        if not isinstance(node, dict):
-            raise ValueError('Steam config has an unsupported structure.')
-    return node
-
-
 def configure(root, game, records, write):
-    option = f'"{Path(game) / "WoodLauncher.exe"}" --launch -- %command%'
-    configs = sorted((Path(root) / 'userdata').glob('*/config/localconfig.vdf'))
-    if not configs:
-        raise RuntimeError('No Steam user configuration found. Sign into Steam once before setup, or untick Steam integration.')
-    # Restore values individually, never replace the complete account configuration.
-    for path in configs:
-        doc = read_vdf(path)
-        app = apps_node(doc).setdefault(APP_ID, {})
-        existing = next((r for r in records if r['path'] == str(path)), None)
-        if existing is None:
-            previous = app.get('LaunchOptions')
-            if previous and '%command%' in previous:
-                raise RuntimeError('An existing Steam launch wrapper is configured. Untick Steam integration to preserve it.')
-            installed = option + (' ' + previous if previous else '')
-            records.append({'path': str(path), 'previous': previous, 'installed': installed})
-        else:
-            if app.get('LaunchOptions') != existing['installed']:
-                raise RuntimeError('Steam launch options changed since the previous install. Preserve them by unticking Steam integration.')
-            installed = option + (' ' + existing['previous'] if existing['previous'] else '')
-            existing['installed'] = installed
-        app['LaunchOptions'] = installed
-        write(path, vdf.dumps(doc, pretty=True))
-    return len(configs)
+    """No-op: UE4SS loads automatically via dwmapi.dll proxy. No Steam launch wrapper needed."""
+    return 0
 
 
 def restore(records, write):
-    conflicts = []
-    for record in records:
-        path = Path(record['path'])
-        if not path.exists():
-            conflicts.append(str(path))
-            continue
-        doc = read_vdf(path)
-        app = apps_node(doc).get(APP_ID, {})
-        if app.get('LaunchOptions') != record['installed']:
-            conflicts.append(str(path))
-            continue
-        if record['previous'] is None:
-            app.pop('LaunchOptions', None)
-        else:
-            app['LaunchOptions'] = record['previous']
-        write(path, vdf.dumps(doc, pretty=True))
-    return conflicts
+    """No-op: no Steam launch options were modified."""
+    return []

@@ -1,3 +1,12 @@
 # Deploy the prebuilt site/dist folder. The Windows installer is built locally.
 [build]
   publish = "site/dist"
+
+[functions]
+  directory = "site/functions"
+  node_bundler = "esbuild"
+
+[[redirects]]
+  from = "/api/mods"
+  to = "/.netlify/functions/mod-catalog"
+  status = 200

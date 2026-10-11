@@ -27,40 +27,53 @@ class SetupTests(unittest.TestCase):
             journal.put('existing.txt', b'installed'); journal.put('created.txt', b'wood')
             journal.put('edited.txt', b'wood'); (root / 'edited.txt').write_text('user edited')
             (root / 'custom.lua').write_text('custom mod')
+            (root / 'custom.tungmod').write_bytes(b'user package')
             conflicts = setup_core.uninstall(root, check_running=False)
             self.assertEqual(conflicts, ['edited.txt'])
             self.assertEqual((root / 'existing.txt').read_text(), 'before')
             self.assertFalse((root / 'created.txt').exists())
             self.assertEqual((root / 'edited.txt').read_text(), 'user edited')
             self.assertTrue((root / 'custom.lua').exists())
+            self.assertEqual((root / 'custom.tungmod').read_bytes(), b'user package')
 
-    def test_steam_roundtrip_preserves_other_settings(self):
+    def test_steam_find_games(self):
         with tempfile.TemporaryDirectory() as temp:
-            root = Path(temp); path = root / 'userdata/1/config/localconfig.vdf'
-            path.parent.mkdir(parents=True)
-            doc = {}; apps = steam_setup.apps_node(doc)
-            apps['4341400'] = {'LaunchOptions': '-windowed'}; apps['123'] = {'LaunchOptions': 'other'}
-            path.write_text(steam_setup.vdf.dumps(doc, pretty=True))
+            root = Path(temp)  # This is the Steam root
+            library = root / 'SteamLibrary'
+            library.mkdir()
+            (library / 'steamapps').mkdir()
+            # Create libraryfolders.vdf in the Steam root
+            (root / 'steamapps').mkdir()
+            library_vdf = root / 'steamapps/libraryfolders.vdf'
+            import vdf
+            vdf_data = {'libraryfolders': {'0': {'path': str(library)}}}
+            library_vdf.write_text(vdf.dumps(vdf_data, pretty=True))
+            appmanifest = library / 'steamapps' / 'appmanifest_4341400.acf'
+            appmanifest.write_text(vdf.dumps({'AppState': {'installdir': 'TUNG'}}, pretty=True))
+            game_dir = library / 'steamapps/common/TUNG'
+            game_dir.mkdir(parents=True)
+            (game_dir / 'TUNG/Binaries/Win64').mkdir(parents=True)
+            (game_dir / 'TUNG/Binaries/Win64/TUNG-Win64-Shipping.exe').write_bytes(b'game')
+            games = steam_setup.find_games(root)
+            self.assertTrue(any('TUNG' in str(g) for g in games))
+
+    def test_steam_configure_is_noop(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            game = root / 'TUNG'
+            game.mkdir()
             records = []
-            write = lambda p, text: p.write_text(text, encoding='utf-8')
-            steam_setup.configure(root, root / 'Game Space', records, write)
-            doc = steam_setup.read_vdf(path); steam_setup.apps_node(doc)['123']['NewSetting'] = 'keep'
-            write(path, steam_setup.vdf.dumps(doc))
-            self.assertEqual(steam_setup.restore(records, write), [])
-            apps = steam_setup.apps_node(steam_setup.read_vdf(path))
-            self.assertEqual(apps['4341400']['LaunchOptions'], '-windowed')
-            self.assertEqual(apps['123']['NewSetting'], 'keep')
+            write = lambda p, text: p.write_text(text)
+            # configure should return 0 and do nothing
+            count = steam_setup.configure(root, game, records, write)
+            self.assertEqual(count, 0)
 
-    def test_steam_uninstall_preserves_later_launch_options(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = Path(temp); path = root / 'userdata/1/config/localconfig.vdf'
-            path.parent.mkdir(parents=True); path.write_text('"UserLocalConfigStore" {}')
-            records = []; write = lambda p, text: p.write_text(text)
-            steam_setup.configure(root, root, records, write)
-            doc = steam_setup.read_vdf(path); steam_setup.apps_node(doc)['4341400']['LaunchOptions'] = 'changed by user'
-            write(path, steam_setup.vdf.dumps(doc))
-            self.assertEqual(steam_setup.restore(records, write), [str(path)])
-            self.assertEqual(steam_setup.apps_node(steam_setup.read_vdf(path))['4341400']['LaunchOptions'], 'changed by user')
+    def test_steam_restore_is_noop(self):
+        records = []
+        write = lambda p, text: p.write_text(text)
+        # restore should return empty conflicts
+        conflicts = steam_setup.restore(records, write)
+        self.assertEqual(conflicts, [])
 
 
 if __name__ == '__main__': unittest.main()

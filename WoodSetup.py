@@ -31,7 +31,7 @@ def register(game, remove=False):
     with winreg.CreateKey(winreg.HKEY_CURRENT_USER, keypath) as key:
         values = {'DisplayName': 'Wood for TUNG', 'DisplayVersion': VERSION, 'Publisher': 'Wood contributors',
                   'InstallLocation': str(game), 'UninstallString': f'"{game / "WoodUninstall.exe"}" --uninstall --game-dir "{game}"',
-                  'DisplayIcon': str(game / 'WoodLauncher.exe')}
+                  'DisplayIcon': str(game / 'WoodUninstall.exe')}
         for name, value in values.items(): winreg.SetValueEx(key, name, 0, winreg.REG_SZ, value)
         for name in ('NoModify', 'NoRepair'): winreg.SetValueEx(key, name, 0, winreg.REG_DWORD, 1)
 
@@ -61,8 +61,7 @@ class Setup(SetupWindow):
     def run(self):
         game = Path(self.path.get()).resolve()
         self.set_busy(True)
-        self.status.configure(text='Restoring your installationâ€¦' if self.args.uninstall else 'Verifying and installing Woodâ€¦')
-        steam_enabled = self.steam.get()
+        self.status.configure(text='Restoring your installation…' if self.args.uninstall else 'Verifying and installing Wood…')
         def work():
             try:
                 if self.args.uninstall:
@@ -71,9 +70,9 @@ class Setup(SetupWindow):
                     message = 'Wood removed. Your mods and settings remain.'
                     if conflicts: message = 'Modified files were preserved. Details: ' + ', '.join(conflicts)
                 else:
-                    install(game, payload_dir(), sys.executable, steam_enabled)
+                    install(game, payload_dir(), sys.executable)
                     register(game)
-                    message = 'Installed. Reopen Steam, launch TUNG, and press F10 for mods.'
+                    message = 'Installed. Launch TUNG via Steam and press F10 for mods.'
                 self.jobs.put((True, message, game))
             except Exception as error: self.jobs.put((False, str(error), game))
         threading.Thread(target=work, daemon=True).start()
@@ -91,16 +90,11 @@ class Setup(SetupWindow):
 
 
 def main():
-    if getattr(sys, 'frozen', False) and Path(sys.executable).stem.lower() == 'woodlauncher':
-        import WoodLauncher
-        WoodLauncher.main()
-        return
     parser = argparse.ArgumentParser(description='Wood for TUNG setup')
     parser.add_argument('--game-dir', type=Path)
     parser.add_argument('--uninstall', action='store_true')
     parser.add_argument('--worker', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument('--silent', action='store_true')
-    parser.add_argument('--no-steam', action='store_true')
     parser.add_argument('--report', type=Path)
     parser.add_argument('--verify-payload', action='store_true')
     args = parser.parse_args()
@@ -112,10 +106,9 @@ def main():
     if args.verify_payload:
         from setup_core import digest
         from wood_runtime import RUNTIME_SHA256
-        result = {'version': VERSION, 'runtime_valid': digest(payload_dir() / 'UE4SS.zip') == RUNTIME_SHA256,
-                  'launcher_present': __import__('importlib.util', fromlist=['find_spec']).find_spec('WoodLauncher') is not None}
+        result = {'version': VERSION, 'runtime_valid': digest(payload_dir() / 'UE4SS.zip') == RUNTIME_SHA256}
         if args.report: args.report.write_text(json.dumps(result))
-        if not all([result['runtime_valid'], result['launcher_present']]): raise RuntimeError('Payload invalid.')
+        if not result['runtime_valid']: raise RuntimeError('Payload invalid.')
         return
     if args.silent:
         if not args.game_dir: parser.error('--silent requires --game-dir')
@@ -124,7 +117,7 @@ def main():
             if not conflicts: register(args.game_dir, True)
             result = {'success': not conflicts, 'preserved': conflicts}
         else:
-            install(args.game_dir, payload_dir(), sys.executable, not args.no_steam)
+            install(args.game_dir, payload_dir(), sys.executable)
             register(args.game_dir); result = {'success': True, 'version': VERSION}
         if args.report: args.report.write_text(json.dumps(result))
         return
