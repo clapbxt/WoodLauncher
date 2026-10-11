@@ -40,8 +40,8 @@ py -3.10 -m venv .venv
 The build verifies the pinned UE4SS archive, generates application icons from
 `WoodLauncherLogo.png`, and checks the built installer executable. Outputs are
 `release/WoodSetup.exe`, `release/WoodModPackager.exe`, and `release/SHA256SUMS.txt`.
-Build caches and binaries are not tracked. The Windows GitHub workflow runs tests,
-builds, and installation checks; version tags also publish the release binaries.
+Build caches and binaries are not tracked. GitHub hosts the source code only;
+there are no automatic build or release workflows. Run the commands above locally.
 
 ## Source map
 
@@ -49,7 +49,7 @@ builds, and installation checks; version tags also publish the release binaries.
 - `wood_runtime.py`, `NativeMods/WoodRuntime`: UE4SS deployment and in-game loader.
 - `steam_setup.py`: Steam installation discovery.
 - `WoodModPackager.py`: `.tungmod` packaging utility.
-- `scripts`, `tests`, `.github/workflows/release.yml`: build and verification tools.
+- `scripts`, `tests`: local build and verification tools.
 - [Mod author guide](docs/MODDING.md): loader API and package format.
 
 Wood source is MIT licensed. See [third-party notices](THIRD_PARTY.md) for UE4SS,
