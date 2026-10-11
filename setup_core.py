@@ -10,7 +10,7 @@ import zipfile
 import wood_runtime as runtime
 import steam_setup
 
-VERSION = '2.2.2'
+VERSION = '2.2.3'
 
 
 def digest(path):

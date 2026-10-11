@@ -2,19 +2,20 @@
 -- Preferences belong to this mod; no vanilla save or OS mouse settings are edited.
 local defaults={auto_speedrunner=true,speedrunner_music=true,
     application_volume=1,
-    sensitivity_x=1,sensitivity_y=1,invert_x=false,invert_y=false,mouse_smoothing=true}
+    sensitivity=1}
 local settings,game_instance={},nil
-local mouse_baselines={}
+local mouse_baseline=nil
 local audio_classes={}
 local last_error={}
 local status={}
-local mod={name='Wood Utilities',version='1.0.2',author='Wood',
+local mod={name='Wood Utilities',version='1.0.3',author='Wood',
     description='Automatic speedrunner mode, application volume, and comfortable mouse controls.'}
 local function valid(object) return object and object:IsValid() end
 local function gs() return StaticFindObject('/Script/Engine.Default__GameplayStatics') end
 local function load(api)
     for key,value in pairs(defaults) do
         local fallback=value
+        if key=='sensitivity' then fallback=api.get('sensitivity_x',1) end
         if key=='application_volume' then
             fallback=api.get('mute',false) and 0 or api.get('master_volume',1)
         end
@@ -91,32 +92,22 @@ local function apply_audio(api,refresh)
     end
 end
 local function apply_mouse(api)
-    assert(valid(api.playerController),'Waiting for a player controller')
-    local input=StaticFindObject('/Script/Engine.Default__InputSettings')
-    assert(valid(input),'Waiting for mouse settings')
-    local count=0
-    -- Adjust the actual mouse-axis properties. Never enable legacy controller
-    -- scales: TUNG's pitch mapping already defines its normal look direction.
-    input.AxisConfig:ForEach(function(index,element)
-        local entry=element:get()
-        local key=entry.AxisKeyName:ToString()
-        local axis=key=='MouseX' and 'x' or key=='MouseY' and 'y' or nil
-        if axis then
-            count=count+1
-            local properties=entry.AxisProperties
-            local state=mouse_baselines[key]
-            if not state then
-                state={sensitivity=properties.Sensitivity,invert=properties.bInvert}
-                mouse_baselines[key]=state
-            end
-            properties.Sensitivity=state.sensitivity*settings['sensitivity_'..axis]
-            properties.bInvert=state.invert~=settings['invert_'..axis]
-        end
-    end)
-    assert(count==2,'Waiting for horizontal and vertical mouse axes')
-    input.bEnableMouseSmoothing=settings.mouse_smoothing
-    -- Rebuild live PlayerInput caches; do not save or rewrite vanilla config.
-    input:ForceRebuildKeymaps()
+    local controller=api.playerController
+    assert(valid(controller),'Waiting for a player controller')
+    local player_input=controller.PlayerInput
+    assert(valid(player_input),'Waiting for live mouse input')
+    if not mouse_baseline then
+        local input=StaticFindObject('/Script/Engine.Default__InputSettings')
+        assert(valid(input),'Waiting for mouse defaults')
+        input.AxisConfig:ForEach(function(index,element)
+            local entry=element:get()
+            if entry.AxisKeyName:ToString()=='MouseX' then mouse_baseline=entry.AxisProperties.Sensitivity end
+        end)
+        assert(mouse_baseline and mouse_baseline>0,'Waiting for the default mouse sensitivity')
+    end
+    -- Apply to the live PlayerInput axis cache through Unreal's native setter.
+    -- Editing InputSettings and rebuilding mappings did not update this cache.
+    player_input:SetMouseSensitivity(mouse_baseline*settings.sensitivity)
 end
 local function apply(api,force)
     attempt(api,'speedrunner',function() apply_speedrunner(api,force) end)
@@ -165,12 +156,8 @@ function mod.buildSettings(api,panel)
     if last_error.audio then api.label(audio,status.audio,13) end
     local mouse=api.section(panel,'MOUSE','Sensitivity is relative to TUNG\'s normal look speed: 1.00x keeps the default.')
     local multiplier=function(value) return string.format('%.2fx',value) end
-    slider(mouse,'Horizontal sensitivity','sensitivity_x',0.1,3,0.05,multiplier)
-    slider(mouse,'Vertical sensitivity','sensitivity_y',0.1,3,0.05,multiplier)
-    toggle(mouse,'Invert horizontal look','invert_x')
-    toggle(mouse,'Invert vertical look','invert_y')
-    toggle(mouse,'Mouse smoothing','mouse_smoothing')
-    api.button(mouse,'Reset mouse',function() reset({'sensitivity_x','sensitivity_y','invert_x','invert_y','mouse_smoothing'}) end)
+    slider(mouse,'Sensitivity','sensitivity',0.1,3,0.05,multiplier)
+    api.button(mouse,'Reset sensitivity',function() reset({'sensitivity'}) end)
     if last_error.mouse then api.label(mouse,status.mouse,13) end
     api.label(panel,'Changes save automatically. Disable Wood Utilities in the launcher and restart to return to vanilla controls.',13)
 end

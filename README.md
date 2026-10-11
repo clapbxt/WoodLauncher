@@ -41,9 +41,9 @@ off also mutes the speedrunner soundtrack immediately.
 
 One Application volume slider controls the final audio output, including menus.
 Set it to 0% to mute TUNG.
-Mouse controls include independent horizontal and vertical sensitivity (0.10x
-to 3.00x), axis inversion, and Unreal's mouse smoothing option. Defaults retain
-vanilla volume and mouse behavior. Reset audio and Reset mouse restore defaults.
+Mouse controls have one Sensitivity slider (0.10x to 3.00x), applied to the
+live game input. Reset sensitivity restores 1.00x. Inversion and smoothing
+controls have been removed; TUNG keeps its vanilla direction and smoothing.
 Preferences save automatically in `.wood/WoodUtilities.settings.ini` and survive
 updates and uninstall. These controls never edit Windows mouse settings or game
 save files. Disable the mod in Wood Launcher and restart to return to vanilla.
@@ -90,7 +90,7 @@ license is included in the bundled archive and installed runtime.
 ## Prepare a GitHub release
 
 The local repository is prepared but has not been pushed. When ready, create an
-empty repository, add it as `origin`, and push `main`. Push a `v2.2.2` tag to run
+empty repository, add it as `origin`, and push `main`. Push a `v2.2.3` tag to run
 the release workflow. The workflow publishes the standalone installer and
 checksums as GitHub release assets. `workflow_dispatch` builds an artifact without
 publishing a release.
