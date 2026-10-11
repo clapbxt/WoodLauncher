@@ -94,7 +94,7 @@ def install_runtime(archive=None):
         if script.is_file():
             enabled = mod_id not in disabled and info.get('enabled', True)
             fields = {'id':mod_id, 'path':str(script).replace('\\', '/'), 'name':str(info.get('name',mod_id)),
-                      'version':str(info.get('version','1.0')), 'description':str(info.get('description',''))}
+                      'version':str(info.get('version','1.0')), 'description':str(info.get('description','')), 'author':str(info.get('author','Local mod'))}
             extensions.append('{' + ', '.join(key+'='+json.dumps(value,ensure_ascii=False) for key,value in fields.items())
                               + ', enabled=' + ('true' if enabled else 'false') + '}')
     atomic_write(destination / 'Scripts/extensions.lua', 'return {\n' + ',\n'.join(extensions) + '\n}\n')

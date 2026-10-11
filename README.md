@@ -7,7 +7,9 @@ Native mod menus, Time Warp, a Windows launcher, and a single-file installer.
 Download **WoodSetup.exe** from the download site. Close TUNG and Wood; exit Steam
 if setup will configure launch options. Run setup, select your TUNG folder, and
 install. Reopen Steam, launch TUNG, and press **F10** for the mod list. Select a
-mod to open its settings; Back or Escape returns to the list.
+mod to open its settings; Back or Escape returns to the list. Search and the All,
+Active, and Settings filters keep larger libraries easy to browse. The list stays
+visible beside each mod's Settings and Info pages.
 
 The installer bundles Python and the pinned UE4SS runtime. No separate dependency
 installation is required. Run **WoodLauncher.exe** in your game folder to manage
@@ -19,9 +21,12 @@ Steam options are restored only if they still match the installed value.
 
 ## Time Warp
 
-World speed ranges from 0.05× to 4×. F6 halves speed, F7 resets to 1×, and F8 doubles
-speed. F10 toggles the native menu; Escape closes it. Persistent options include
-enable/disable and reset on world changes. The engine confirms applied values.
+World speed ranges from 0.05x to 4x. F6 halves speed, F7 resets to 1x, and F8 doubles
+speed. F10 toggles the native menu; Escape returns to the list, then closes it. Persistent options include
+enable/disable and reset on world changes. The settings page includes presets,
+an exact speed field (0.05 to 4, Enter or Apply), and separate saved/applied readouts.
+The engine confirms applied values. Changes save automatically. Hotkeys do not
+change speed while you are typing in the search or exact speed field.
 
 This is a practice tool, not a leaderboard certification system. Check category
 rules for submitted runs. Input recording, replay, and frame stepping are absent.
@@ -54,6 +59,7 @@ unsigned. Game updates may require runtime changes.
 - `steam_setup.py`: Steam libraries and reversible account launch options.
 - `wood_runtime.py`: native deployment and local command/status bridge.
 - `NativeMods/WoodRuntime`: UE4SS Lua runtime and native Unreal widgets.
+  `Scripts/menu.lua` owns library browsing and settings presentation.
 - `NativeMods/_Example`: extension template with persistent native settings.
 - `tests`: runtime, installation, and Steam restoration regression tests.
 - `site`: static website generator; `dist` contains deployable pages.
@@ -66,7 +72,7 @@ license is included in the bundled archive and installed runtime.
 ## Prepare a GitHub release
 
 The local repository is prepared but has not been pushed. When ready, create an
-empty repository, add it as `origin`, and push `main`. Push a `v2.1.2` tag to run
+empty repository, add it as `origin`, and push `main`. Push a `v2.1.3` tag to run
 the release workflow. The workflow publishes the standalone installer and
 checksums as GitHub release assets. `workflow_dispatch` builds an artifact without
 publishing a release.

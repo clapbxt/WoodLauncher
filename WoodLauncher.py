@@ -141,7 +141,7 @@ class Launcher(tk.Tk):
         header = tk.Frame(self, bg=BG)
         header.pack(fill='x', padx=28, pady=(22, 16))
         self.label(header, 'WOOD', 29, ACCENT).pack(side='left')
-        self.label(header, 'TUNG / 2.1.2', 12, MUTED).pack(side='left', padx=18)
+        self.label(header, 'TUNG / 2.1.3', 12, MUTED).pack(side='left', padx=18)
         self.connection = self.label(header, 'Runtime offline', 11, MUTED)
         self.connection.pack(side='right')
         toolbar = tk.Frame(self, bg=BG)
