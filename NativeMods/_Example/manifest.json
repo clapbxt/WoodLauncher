@@ -1,0 +1,8 @@
+{
+  "id": "Example",
+  "name": "Example native mod",
+  "version": "1.0.0",
+  "enabled": true,
+  "runtime": "UE4SS",
+  "description": "Copy this folder to NativeMods/MyMod to register a native settings section."
+}

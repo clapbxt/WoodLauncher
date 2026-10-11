@@ -1,0 +1,9 @@
+{
+  "id": "TimeWarp",
+  "name": "Time Warp",
+  "version": "2.1.0",
+  "author": "Wood",
+  "description": "Native Unreal world-speed control, presets, hotkeys, and persistent in-game settings.",
+  "runtime": "UE4SS",
+  "menu_key": "F10"
+}

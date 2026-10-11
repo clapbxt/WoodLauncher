@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.wood/
+.build/
+payload/
+release/
+site/dist/downloads/*.exe
+site/.openai/
+*.spec
+.venv/
+site/.git/
+site/.gitignore
