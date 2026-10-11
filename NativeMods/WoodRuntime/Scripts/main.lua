@@ -44,14 +44,23 @@ local ticks = 0
 local pending_tick = false
 local selftest_result = ''
 local extensions = {}
+local active_page, content_panel, render_page
 -- Local Lua mods register a settings section in the same native menu. Loading
 -- failures are isolated so one extension cannot prevent Time Warp from loading.
 for _, item in ipairs(dofile(directory .. '/extensions.lua')) do
-    local ok, definition = pcall(dofile, item.path)
+    local ok, definition = true, {}
+    if item.enabled ~= false then ok, definition = pcall(dofile, item.path) end
     if ok and type(definition) == 'table' then
         definition.id = item.id
+        definition.name = definition.name or item.name
+        definition.version = definition.version or item.version
+        definition.description = definition.description or item.description
+        definition.enabled = item.enabled ~= false
         table.insert(extensions, definition)
-    else print('[Wood] Could not load ' .. item.id .. ': ' .. tostring(definition) .. '\n') end
+    else
+        table.insert(extensions, {id=item.id,name=item.name,version=item.version,enabled=false,error=tostring(definition)})
+        print('[Wood] Could not load ' .. item.id .. ': ' .. tostring(definition) .. '\n')
+    end
 end
 
 local function valid(object) return object and object:IsValid() end
@@ -140,6 +149,80 @@ local function hide()
         end
     end
 end
+local function build_time_warp(panel)
+    row(panel, text('TIME WARP', 28))
+    row(panel, text('Change world speed using Unreal time dilation.', 16))
+    speed_label = row(panel, text('', 28, {R=0.32,G=0.87,B=0.75,A=1}))
+    slider = construct('Slider')
+    slider:SetMinValue(0.05); slider:SetMaxValue(4); slider:SetStepSize(0.05); slider:SetValue(speed)
+    row(panel, slider, 12)
+    local presets = construct('HorizontalBox'); row(panel, presets, 10)
+    for _, value in ipairs({0.1,0.25,0.5,1,2,4}) do
+        local target = value
+        button(presets, string.format('  %gx  ', value), function() set_speed(target) end)
+    end
+    local toggle_row = construct('HorizontalBox'); row(panel, toggle_row)
+    button(toggle_row, 'Toggle mod', function() enabled = not enabled; set_speed(speed) end)
+    enabled_label = text('', 18)
+    toggle_row:AddChildToHorizontalBox(enabled_label):SetPadding({Left=14,Top=4,Right=0,Bottom=4})
+    local travel_row = construct('HorizontalBox'); row(panel, travel_row)
+    button(travel_row, 'World changes', function() restore_on_travel = not restore_on_travel; save() end)
+    travel_label = text('', 16)
+    travel_row:AddChildToHorizontalBox(travel_label):SetPadding({Left=14,Top=4,Right=0,Bottom=4})
+    row(panel, text('F6 slower  /  F7 normal  /  F8 faster', 16))
+    row(panel, text('Settings save automatically. Disabling restores 1x.', 15))
+    local footer = construct('HorizontalBox'); row(panel, footer, 12)
+    button(footer, '  Reset to 1x  ', function() set_speed(1) end)
+end
+render_page = function(id)
+    tree = menu.WidgetTree
+    content_panel:ClearChildren()
+    button_actions = {}
+    slider=nil; speed_label=nil; enabled_label=nil; travel_label=nil
+    active_page = id
+    local panel = content_panel
+    if id then
+        local navigation = construct('HorizontalBox'); row(panel, navigation)
+        button(navigation, '  < Back to mods  ', function() render_page(nil) end)
+        if id == 'TimeWarp' then build_time_warp(panel)
+        else
+            for _, definition in ipairs(extensions) do
+                if definition.id == id then
+                    row(panel, text(definition.name or definition.id, 28))
+                    row(panel, text('Version ' .. (definition.version or '1.0'), 16))
+                    if definition.description then row(panel, text(definition.description, 16)) end
+                    if definition.error then row(panel, text('Load error: ' .. definition.error, 14))
+                    elseif not definition.enabled then row(panel, text('Disabled. Enable in the launcher and restart TUNG.', 16))
+                    elseif type(definition.buildSettings) == 'function' then
+                        local ok, err = pcall(definition.buildSettings, extension_api(definition), panel)
+                        if not ok then row(panel, text('Settings error: ' .. tostring(err), 14)) end
+                    else row(panel, text('This mod has no configurable settings.', 16)) end
+                    break
+                end
+            end
+        end
+    else
+        row(panel, text('YOUR MODS', 24))
+        row(panel, text('Select a mod to open its settings.', 16))
+        local function mod_item(id, name, version, description, state)
+            local card = construct('Border')
+            card:SetBrushColor({R=0.055,G=0.09,B=0.13,A=1})
+            card:SetPadding({Left=18,Top=12,Right=18,Bottom=12})
+            local contents = construct('VerticalBox'); card:SetContent(contents); row(panel, card, 9)
+            local link = construct('HorizontalBox'); row(contents, link)
+            button(link, name .. '   >', function() render_page(id) end)
+            row(contents, text('v' .. version .. '  /  ' .. state, 14, {R=0.32,G=0.87,B=0.75,A=1}))
+            if description then row(contents, text(description, 15)) end
+        end
+        mod_item('TimeWarp','Time Warp','2.1','World speed, presets, hotkeys, and saved settings.', enabled and 'Enabled' or 'Disabled')
+        for _, definition in ipairs(extensions) do
+            mod_item(definition.id,definition.name or definition.id,definition.version or '1.0',definition.description,
+                definition.error and 'Load error' or (definition.enabled and 'Enabled' or 'Disabled'))
+        end
+    end
+    local done = construct('HorizontalBox'); row(panel, done, 14)
+    button(done, '  Done  ', hide)
+end
 local function build_menu()
     menu = widget_library():Create(pc, StaticFindObject('/Script/UMG.UserWidget'), pc)
     assert(valid(menu), 'Unreal did not create the mod menu')
@@ -152,50 +235,12 @@ local function build_menu()
     border:SetContent(shell)
     tree.RootWidget = border
     row(shell, text('WOOD  /  MODS', 30, {R=0.32,G=0.87,B=0.75,A=1}))
-    row(shell, text(string.format('%d native mod(s)    |    F10 or Esc to close', #extensions+1), 16))
+    row(shell, text(string.format('%d installed mod(s)    |    F10 closes  /  Esc goes back', #extensions+1), 16))
     local scroll = construct('ScrollBox')
     shell:AddChildToVerticalBox(scroll):SetSize({Value=1,SizeRule=1})
-    local panel = construct('VerticalBox')
-    scroll:AddChild(panel)
-    row(panel, text('TIME WARP   v2.1', 24))
-    row(panel, text('Change world speed using Unreal time dilation.', 16))
-    speed_label = row(panel, text('', 28, {R=0.32,G=0.87,B=0.75,A=1}))
-    slider = construct('Slider')
-    slider:SetMinValue(0.05)
-    slider:SetMaxValue(4)
-    slider:SetStepSize(0.05)
-    slider:SetValue(speed)
-    row(panel, slider, 12)
-    local presets = construct('HorizontalBox')
-    row(panel, presets, 10)
-    for _, value in ipairs({0.1, 0.25, 0.5, 1, 2, 4}) do
-        local target = value
-        button(presets, string.format('  %gx  ', value), function() set_speed(target) end)
-    end
-    local toggle_row = construct('HorizontalBox')
-    row(panel, toggle_row)
-    enabled_label = text('', 18)
-    local toggle = button(toggle_row, 'Toggle mod', function() enabled = not enabled; set_speed(speed) end)
-    toggle_row:AddChildToHorizontalBox(enabled_label):SetPadding({Left=14,Top=4,Right=0,Bottom=4})
-    local travel_row = construct('HorizontalBox')
-    row(panel, travel_row)
-    button(travel_row, 'World changes', function() restore_on_travel = not restore_on_travel; save() end)
-    travel_label = text('', 16)
-    travel_row:AddChildToHorizontalBox(travel_label):SetPadding({Left=14,Top=4,Right=0,Bottom=4})
-    row(panel, text('F6 slower  /  F7 normal  /  F8 faster', 16))
-    row(panel, text('Settings save automatically. Disabling restores 1x.', 15))
-    local footer = construct('HorizontalBox')
-    row(panel, footer, 12)
-    button(footer, '  Reset to 1x  ', function() set_speed(1) end)
-    button(footer, '  Done  ', hide)
-    for _, definition in ipairs(extensions) do
-        row(panel, text((definition.name or definition.id) .. '  v' .. (definition.version or '1.0'), 24))
-        if definition.description then row(panel, text(definition.description, 16)) end
-        if type(definition.buildSettings) == 'function' then
-            local ok, err = pcall(definition.buildSettings, extension_api(definition), panel)
-            if not ok then row(panel, text('Settings error: ' .. tostring(err), 14)) end
-        end
-    end
+    content_panel = construct('VerticalBox')
+    scroll:AddChild(content_panel)
+    render_page(nil)
     menu:AddToViewport(10000)
     menu:SetAlignmentInViewport({X=0.5,Y=0.5})
     menu:SetPositionInViewport({X=640,Y=360}, true)
@@ -206,6 +251,7 @@ end
 local function show()
     if not valid(pc) then return end
     if not valid(menu) then button_actions = {}; build_menu() end
+    render_page(nil)
     saved_cursor = pc.bShowMouseCursor
     pc:SetIgnoreLookInput(true)
     pc:SetIgnoreMoveInput(true)
@@ -240,7 +286,11 @@ local function safe(callback)
 end
 local function queue(callback) ExecuteInGameThread(function() safe(callback) end) end
 RegisterKeyBind(Key.F10, function() queue(toggle_menu) end)
-RegisterKeyBind(Key.ESCAPE, function() if visible then queue(hide) end end)
+RegisterKeyBind(Key.ESCAPE, function()
+    if visible then
+        queue(function() if active_page then render_page(nil) else hide() end end)
+    end
+end)
 -- Win32 key events retain very short clicks between engine ticks. Hit testing
 -- still belongs to the actual UMG button, rather than desktop coordinates.
 RegisterKeyBind(Key.LEFT_MOUSE_BUTTON, function()
@@ -328,7 +378,7 @@ LoopAsync(16, function()
                 gameplay():SetGlobalTimeDilation(pc, enabled and speed or 1)
                 build_entry()
                 for _, definition in ipairs(extensions) do
-                    if type(definition.onWorldReady) == 'function' then
+                    if definition.enabled and type(definition.onWorldReady) == 'function' then
                         local ok, err = pcall(definition.onWorldReady, extension_api(definition))
                         if not ok then print('[Wood] ' .. definition.id .. ': ' .. tostring(err) .. '\n') end
                     end
@@ -345,7 +395,7 @@ LoopAsync(16, function()
                     if visible and valid(menu) then menu:SetPositionInViewport({X=size.X/2,Y=size.Y/2}, true) end
                 end
             end
-            if visible and valid(menu) then
+            if visible and valid(menu) and active_page == 'TimeWarp' and valid(slider) then
                 local value = clamp(slider:GetValue())
                 if value ~= speed then set_speed(value) end
                 speed_label:SetText(FText(string.format('%.2fx world speed', applied)))

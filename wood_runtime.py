@@ -91,8 +91,12 @@ def install_runtime(archive=None):
         if not isinstance(mod_id, str) or not mod_id.replace('_', '').isalnum():
             raise ValueError(f'Invalid native mod id in {manifest}')
         script = manifest.parent / 'wood.lua'
-        if mod_id not in disabled and info.get('enabled', True) and script.is_file():
-            extensions.append('{id=' + json.dumps(mod_id) + ', path=' + json.dumps(str(script).replace('\\', '/'), ensure_ascii=False) + '}')
+        if script.is_file():
+            enabled = mod_id not in disabled and info.get('enabled', True)
+            fields = {'id':mod_id, 'path':str(script).replace('\\', '/'), 'name':str(info.get('name',mod_id)),
+                      'version':str(info.get('version','1.0')), 'description':str(info.get('description',''))}
+            extensions.append('{' + ', '.join(key+'='+json.dumps(value,ensure_ascii=False) for key,value in fields.items())
+                              + ', enabled=' + ('true' if enabled else 'false') + '}')
     atomic_write(destination / 'Scripts/extensions.lua', 'return {\n' + ',\n'.join(extensions) + '\n}\n')
     modlist = RUNTIME / 'Mods/mods.txt'
     lines = modlist.read_text(encoding='utf-8-sig').splitlines() if modlist.exists() else []

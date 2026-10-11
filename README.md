@@ -6,7 +6,8 @@ Native mod menus, Time Warp, a Windows launcher, and a single-file installer.
 
 Download **WoodSetup.exe** from the download site. Close TUNG and Wood; exit Steam
 if setup will configure launch options. Run setup, select your TUNG folder, and
-install. Reopen Steam, launch TUNG, and press **F10** for the native mod menu.
+install. Reopen Steam, launch TUNG, and press **F10** for the mod list. Select a
+mod to open its settings; Back or Escape returns to the list.
 
 The installer bundles Python and the pinned UE4SS runtime. No separate dependency
 installation is required. Run **WoodLauncher.exe** in your game folder to manage
@@ -65,7 +66,7 @@ license is included in the bundled archive and installed runtime.
 ## Prepare a GitHub release
 
 The local repository is prepared but has not been pushed. When ready, create an
-empty repository, add it as `origin`, and push `main`. Push a `v2.1.0` tag to run
+empty repository, add it as `origin`, and push `main`. Push a `v2.1.1` tag to run
 the release workflow. The workflow publishes the standalone installer and
 checksums as GitHub release assets. `workflow_dispatch` builds an artifact without
 publishing a release.
