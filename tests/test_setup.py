@@ -8,6 +8,17 @@ import steam_setup
 
 
 class SetupTests(unittest.TestCase):
+    def test_journal_normalizes_root_before_checking_containment(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / 'alias').mkdir()
+            journal = setup_core.Journal(root / 'alias' / '..')
+            journal.put('inside.txt', b'valid target')
+            self.assertEqual(journal.game, root.resolve())
+            self.assertEqual((root / 'inside.txt').read_bytes(), b'valid target')
+            with self.assertRaises(ValueError):
+                journal.put('../escape.txt', b'outside')
+
     def test_upgrade_retires_only_unchanged_owned_mods_and_rolls_back(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

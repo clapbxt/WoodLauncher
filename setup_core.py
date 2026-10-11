@@ -66,7 +66,7 @@ def require_closed(game):
 
 class Journal:
     def __init__(self, game):
-        self.game = game
+        self.game = game = Path(game).resolve()
         self.path = game / '.wood/install-manifest.json'
         self.original = self.path.read_bytes() if self.path.exists() else None
         self.data = json.loads(self.original) if self.original else {'version': VERSION, 'files': {}, 'steam': []}
