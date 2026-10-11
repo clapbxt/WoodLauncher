@@ -392,6 +392,8 @@ return function(options)
             end
         end
     end
+    -- Mutate reflected brush fields in place. Resubmitting the owning FButtonStyle
+    -- through UButton:SetStyle can fail-fast in the pinned UE4SS bridge.
     function ui:update_focus()
         local current
         for _,group in ipairs({'shell','list','details'}) do
@@ -405,14 +407,12 @@ return function(options)
             local style=self.focus_widget.WidgetStyle
             style.Normal.OutlineSettings.Width=0
             style.Hovered.OutlineSettings.Width=1; style.Hovered.OutlineSettings.Color=slate(c.purple)
-            self.focus_widget:SetStyle(style)
         end
         self.focus_widget=current
         if current then
             local style=current.WidgetStyle
             style.Normal.OutlineSettings.Width=2; style.Normal.OutlineSettings.Color=slate(c.lime)
             style.Hovered.OutlineSettings.Width=2; style.Hovered.OutlineSettings.Color=slate(c.lime)
-            current:SetStyle(style)
         end
     end
     function ui:tick()

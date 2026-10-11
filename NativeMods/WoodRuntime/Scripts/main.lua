@@ -108,7 +108,7 @@ local function extension_api(definition)
     }
 end
 ui = dofile(directory .. '/menu.lua')({
-    version='2.1.3', extensions=extensions, extension_api=extension_api,
+    version='2.1.4', extensions=extensions, extension_api=extension_api,
     state=function() return {speed=speed,applied=applied,enabled=enabled,restore_on_travel=restore_on_travel} end,
     set_speed=set_speed,
     set_enabled=function(value) enabled=value; set_speed(speed) end,
@@ -239,4 +239,4 @@ LoopAsync(16, function()
     end)
     return false
 end)
-print('[Wood] Time Warp 2.1.3 loaded. F10 mods; F6 slower; F7 reset; F8 faster.\n')
+print('[Wood] Time Warp 2.1.4 loaded. F10 mods; F6 slower; F7 reset; F8 faster.\n')

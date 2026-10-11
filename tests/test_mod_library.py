@@ -5,7 +5,7 @@ import unittest
 from lupa.lua54 import LuaRuntime
 
 BOOT = r'''
-created={}; keys={}; builds=0; callbacks=0; world='TestWorld'; viewport={X=1280,Y=720}; dpi=1
+created={}; keys={}; builds=0; callbacks=0; unsafe_style_calls=0; world='TestWorld'; viewport={X=1280,Y=720}; dpi=1
 function FText(t) return {ToString=function() return t end} end
 function brush() return {OutlineSettings={}} end
 function object(class)
@@ -22,7 +22,8 @@ function object(class)
  function o:SetText(t) self.label=t:ToString() end
  function o:GetText() return FText(self.label or '') end
  function o:SetFont(f) self.Font=f end
- function o:SetStyle(s) self.WidgetStyle=s end
+ -- Copying a live owning style through the pinned UE4SS bridge can terminate TUNG.
+ function o:SetStyle(s) unsafe_style_calls=unsafe_style_calls+1;error('Unsafe owning FButtonStyle resubmission') end
  function o:SetValue(v) self.value=v end
  function o:GetValue() return self.value end
  function o:SetVisibility(v) self.visibility=v end
@@ -113,6 +114,9 @@ class NativeMenuTests(unittest.TestCase):
         self.lua.execute("assert(load(..., '@NativeMods/WoodRuntime/Scripts/main.lua'))()", source)
         self.lua.execute('tick(); keys.F10()')
 
+    def tearDown(self):
+        self.lua.execute("assert(unsafe_style_calls==0, 'Do not resubmit a live owning FButtonStyle through UE4SS')")
+
     def run_lua(self, code):
         self.lua.execute(code)
 
@@ -129,6 +133,27 @@ class NativeMenuTests(unittest.TestCase):
         self.run_lua("test_ui.search:SetText(FText(''));tick();assert(click('Settings'));assert(#test_ui.shown==2)")
         self.run_lua("test_ui.search:SetText(FText('[?]'));tick();assert(#test_ui.shown==0);assert(has_label(test_ui.list,'No matching mods'))")
         self.run_lua("assert(click('Reset filters'));assert(#test_ui.shown==5);assert(test_ui.query=='' and test_ui.filter=='All')")
+
+    def test_filter_focus_transitions_preserve_the_page_and_settings(self):
+        self.run_lua("assert(click('Time Warp'));assert(click('2x'));old_row=test_ui.list_buttons.Example")
+        saved=(self.data / 'settings.ini').read_bytes()
+        self.run_lua("""
+            for cycle=1,20 do
+                for _,filter in ipairs({'Active','Settings','All'}) do
+                    local button=test_ui.filter_buttons[filter]
+                    focus(nil);button.focus=true;tick()
+                    if cycle%2==0 then keys.RETURN();tick() else click_widget(button) end
+                    local expected=filter=='All' and 5 or filter=='Active' and 3 or 2
+                    assert(test_ui.filter==filter and #test_ui.shown==expected)
+                    assert(test_ui.selected=='TimeWarp' and applied_speed==2)
+                    assert(button.WidgetStyle.Normal.OutlineSettings.Width==2)
+                    assert(unsafe_style_calls==0)
+                end
+            end
+            focus(nil);click_widget(old_row)
+            assert(test_ui.selected=='TimeWarp' and applied_speed==2)
+        """)
+        self.assertEqual(saved, (self.data / 'settings.ini').read_bytes())
 
     def test_exact_speed_validates_and_enter_applies(self):
         self.run_lua("assert(click('Time Warp'));focus(test_ui.speed_input)")
@@ -152,7 +177,7 @@ class NativeMenuTests(unittest.TestCase):
     def test_keyboard_focus_is_visible_and_activates_the_selected_control(self):
         self.run_lua("assert(click('Time Warp'));focus(nil);test_ui.enabled_button.focus=true;tick()")
         self.run_lua('assert(test_ui.enabled_button.WidgetStyle.Normal.OutlineSettings.Width==2)')
-        self.run_lua("keys.SPACE();assert(pc.ignore_move);assert(has_label(test_ui.details,'v2.1.3  /  Wood  /  Disabled'))")
+        self.run_lua("keys.SPACE();assert(pc.ignore_move);assert(has_label(test_ui.details,'v2.1.4  /  Wood  /  Disabled'))")
         self.run_lua('focus(nil);test_ui.travel_button.focus=true;tick()')
         self.run_lua('assert(test_ui.enabled_button.WidgetStyle.Normal.OutlineSettings.Width==0);assert(test_ui.travel_button.WidgetStyle.Normal.OutlineSettings.Width==2)')
         self.run_lua('keys.RETURN()')

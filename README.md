@@ -72,7 +72,7 @@ license is included in the bundled archive and installed runtime.
 ## Prepare a GitHub release
 
 The local repository is prepared but has not been pushed. When ready, create an
-empty repository, add it as `origin`, and push `main`. Push a `v2.1.3` tag to run
+empty repository, add it as `origin`, and push `main`. Push a `v2.1.4` tag to run
 the release workflow. The workflow publishes the standalone installer and
 checksums as GitHub release assets. `workflow_dispatch` builds an artifact without
 publishing a release.
