@@ -30,6 +30,15 @@ speedrun=sound_class('Speedrun',0);dream=sound_class('DreamSpeedrunMusic')
 master_output=object('SoundSubmix');volume_calls=0
 function master_output:SetSubmixOutputVolume(context,value) assert(context==pc);application_gain=value;volume_calls=volume_calls+1 end
 input_settings.bEnableLegacyInputScales=false
+mouse_x={Sensitivity=0.07,bInvert=false};mouse_y={Sensitivity=0.07,bInvert=false}
+input_settings.AxisConfig={ForEach=function(self,callback)
+ for _,pair in ipairs({{'MouseX',mouse_x},{'MouseY',mouse_y}}) do
+  local entry={AxisKeyName=FText(pair[1]),AxisProperties=pair[2]}
+  callback(1,{get=function() return entry end})
+ end
+end}
+rebuilds=0
+function input_settings:ForceRebuildKeymaps() rebuilds=rebuilds+1 end
 function pc:GetAddress() return 'controller-address' end
 pc.InputYawScale=2.5;pc.InputPitchScale=-2.5
 function pc:SetDeprecatedInputYawScale(value) self.InputYawScale=value end
@@ -106,11 +115,27 @@ class UtilitiesTests(unittest.TestCase):
 
     def test_mouse_scaling_without_any_native_input_hooks(self):
         self.run_lua("slider_value('Horizontal sensitivity',3);slider_value('Vertical sensitivity',3)")
-        self.run_lua("assert(hook_count==0 and pc.InputYawScale==3 and pc.InputPitchScale==3 and input_settings.bEnableLegacyInputScales)")
+        self.run_lua("assert(hook_count==0 and math.abs(mouse_x.Sensitivity-0.21)<0.00001 and math.abs(mouse_y.Sensitivity-0.21)<0.00001 and not input_settings.bEnableLegacyInputScales)")
         self.run_lua("click_widget(control('Invert vertical look'));click_widget(control('Mouse smoothing'))")
-        self.run_lua("assert(pc.InputPitchScale==-3 and not input_settings.bEnableMouseSmoothing)")
-        self.run_lua("for i=1,50 do slider_value('Horizontal sensitivity',i%2==0 and 3 or 0.1) end;assert(hook_count==0 and pc.InputYawScale==3)")
-        self.run_lua("world='NextWorld';tick();assert(pc.InputYawScale==3 and pc.InputPitchScale==-3)")
+        self.run_lua("assert(mouse_y.bInvert and not input_settings.bEnableMouseSmoothing)")
+        self.run_lua("for i=1,50 do slider_value('Horizontal sensitivity',i%2==0 and 3 or 0.1) end;assert(hook_count==0 and math.abs(mouse_x.Sensitivity-0.21)<0.00001)")
+        self.run_lua("world='NextWorld';tick();assert(math.abs(mouse_x.Sensitivity-0.21)<0.00001 and mouse_y.bInvert)")
+        self.run_lua("keys.F10();assert(click('Wood Utilities'));click_widget(control('Invert vertical look'));assert(not mouse_y.bInvert);click_widget(control('Invert vertical look'));assert(mouse_y.bInvert);click_widget(control('Invert vertical look'));assert(not mouse_y.bInvert)")
+        self.run_lua("assert(pc.InputYawScale==2.5 and pc.InputPitchScale==-2.5 and not input_settings.bEnableLegacyInputScales)")
+
+    def test_inversion_off_restores_an_existing_inverted_axis_baseline(self):
+        self.run_lua("""
+            mouse_y.bInvert=true;mouse_y.Sensitivity=0.12
+            local mod=dofile(test_utilities)
+            local callbacks={}
+            local api={playerController=pc,get=function(k,v) return v end,set=function() end,log=function(message) error(message) end,
+                section=function() return {} end,label=function() end,button=function() end,slider=function() end,
+                toggle=function(parent,label,initial,callback) callbacks[label]=callback end,refreshSettings=function() end}
+            mod.onWorldReady(api);mod.buildSettings(api,{})
+            assert(mouse_y.bInvert and mouse_y.Sensitivity==0.12)
+            callbacks['Invert vertical look'](true);assert(not mouse_y.bInvert)
+            callbacks['Invert vertical look'](false);assert(mouse_y.bInvert)
+        """)
 
     def test_native_volume_does_not_compound_and_respects_vanilla_music_changes(self):
         self.run_lua("slider_value('Application volume',0.5);for i=1,100 do tick() end;assert(application_gain==0.5)")
@@ -118,7 +143,7 @@ class UtilitiesTests(unittest.TestCase):
 
     def test_reset_and_page_cleanup_preserve_time_warp(self):
         self.run_lua("slider_value('Application volume',0.2);old_slider=control('Application volume');assert(click('Reset audio'));assert(application_gain==1)")
-        self.run_lua("slider_value('Horizontal sensitivity',3);click_widget(control('Invert horizontal look'));assert(click('Reset mouse'));assert(pc.InputYawScale==1)")
+        self.run_lua("slider_value('Horizontal sensitivity',3);click_widget(control('Invert horizontal look'));assert(click('Reset mouse'));assert(mouse_x.Sensitivity==0.07 and not mouse_x.bInvert)")
         self.run_lua("assert(click('Time Warp'));assert(#test_ui.controls==0);old_slider:SetValue(0);tick();assert(application_gain==1 and applied_speed==1)")
         self.assertFalse((self.data/'settings.ini').exists())
 
@@ -126,7 +151,7 @@ class UtilitiesTests(unittest.TestCase):
         path=self.data/'WoodUtilities.settings.ini'
         path.write_text('auto_speedrunner=false\nsensitivity_x=nan\nsensitivity_y=99\nmaster_volume=0.5\nmute=true\n',encoding='utf-8')
         self.run_lua("assert(click('Wood Utilities'));world='NextWorld';tick();assert(application_gain==0)")
-        self.run_lua("assert(pc.InputYawScale==1 and pc.InputPitchScale==3)")
+        self.run_lua("assert(mouse_x.Sensitivity==0.07 and math.abs(mouse_y.Sensitivity-0.21)<0.00001)")
         self.run_lua("keys.F10();assert(click('Wood Utilities'));slider_value('Application volume',0.6);assert(application_gain==0.6)")
         self.assertIn('application_volume=0.6',self.saved())
 

@@ -5,11 +5,10 @@ local defaults={auto_speedrunner=true,speedrunner_music=true,
     sensitivity_x=1,sensitivity_y=1,invert_x=false,invert_y=false,mouse_smoothing=true}
 local settings,game_instance={},nil
 local mouse_baselines={}
-local original_legacy_scales=nil
 local audio_classes={}
 local last_error={}
 local status={}
-local mod={name='Wood Utilities',version='1.0.1',author='Wood',
+local mod={name='Wood Utilities',version='1.0.2',author='Wood',
     description='Automatic speedrunner mode, application volume, and comfortable mouse controls.'}
 local function valid(object) return object and object:IsValid() end
 local function gs() return StaticFindObject('/Script/Engine.Default__GameplayStatics') end
@@ -92,25 +91,32 @@ local function apply_audio(api,refresh)
     end
 end
 local function apply_mouse(api)
-    local controller=api.playerController
-    assert(valid(controller),'Waiting for a player controller')
+    assert(valid(api.playerController),'Waiting for a player controller')
     local input=StaticFindObject('/Script/Engine.Default__InputSettings')
     assert(valid(input),'Waiting for mouse settings')
-    if original_legacy_scales==nil then original_legacy_scales=input.bEnableLegacyInputScales end
-    local name=controller:GetFullName()
-    local state=mouse_baselines[name]
-    if not state or state.object~=controller:GetAddress() then
-        -- With legacy scales disabled, Unreal's effective multiplier is 1,
-        -- even though the unused deprecated properties contain other values.
-        state={object=controller:GetAddress(),
-            x=original_legacy_scales and controller.InputYawScale or 1,
-            y=original_legacy_scales and controller.InputPitchScale or 1}
-        mouse_baselines[name]=state
-    end
-    input.bEnableLegacyInputScales=true
-    controller:SetDeprecatedInputYawScale(state.x*settings.sensitivity_x*(settings.invert_x and -1 or 1))
-    controller:SetDeprecatedInputPitchScale(state.y*settings.sensitivity_y*(settings.invert_y and -1 or 1))
+    local count=0
+    -- Adjust the actual mouse-axis properties. Never enable legacy controller
+    -- scales: TUNG's pitch mapping already defines its normal look direction.
+    input.AxisConfig:ForEach(function(index,element)
+        local entry=element:get()
+        local key=entry.AxisKeyName:ToString()
+        local axis=key=='MouseX' and 'x' or key=='MouseY' and 'y' or nil
+        if axis then
+            count=count+1
+            local properties=entry.AxisProperties
+            local state=mouse_baselines[key]
+            if not state then
+                state={sensitivity=properties.Sensitivity,invert=properties.bInvert}
+                mouse_baselines[key]=state
+            end
+            properties.Sensitivity=state.sensitivity*settings['sensitivity_'..axis]
+            properties.bInvert=state.invert~=settings['invert_'..axis]
+        end
+    end)
+    assert(count==2,'Waiting for horizontal and vertical mouse axes')
     input.bEnableMouseSmoothing=settings.mouse_smoothing
+    -- Rebuild live PlayerInput caches; do not save or rewrite vanilla config.
+    input:ForceRebuildKeymaps()
 end
 local function apply(api,force)
     attempt(api,'speedrunner',function() apply_speedrunner(api,force) end)
