@@ -6,7 +6,17 @@ import unittest
 import struct
 import zlib
 from lupa.lua54 import LuaRuntime
-from WoodModPackager import create_package
+
+
+def create_package(lua_path, output_path, metadata, icon_path=None):
+    source = Path(lua_path).read_bytes()
+    metadata_bytes = ''.join(f"{key}={metadata[key]}\n" for key in
+                             ('id', 'name', 'version', 'author', 'description')).encode('utf-8')
+    icon = Path(icon_path).read_bytes() if icon_path else b''
+    output = Path(output_path).with_suffix('.tungmod')
+    output.write_bytes(b'TUNG-MOD/1\n' + f'{len(metadata_bytes)}\n{len(source)}\n{len(icon)}\n'.encode()
+                       + metadata_bytes + source + icon)
+    return output
 
 
 def png_fixture(width=32, height=32):
@@ -53,10 +63,12 @@ function object(class)
  function o:IsHovered() return self.hover==true end
  function o:HasKeyboardFocus() return self.focus==true end
  function o:HasFocusedDescendants() return self.descendant_focus==true end
- function o:GetFullName() return world..'.PlayerController' end
+ function o:GetFullName() return world..'.'..tostring(self.class) end
  function o:GetViewportSize() return viewport end
  function o:GetViewportScale() return dpi end
  function o:GetGlobalTimeDilation() return applied_speed or 1 end
+ function o:GetScrollOffsetOfEnd() return scroll_end end
+ function o:SetScrollOffset(v) self.scroll_offset=v; last_scroll_offset=v end
  function o:SetGlobalTimeDilation(pc,speed) applied_speed=speed end
  function o:SetIgnoreLookInput(v) self.ignore_look=v end
  function o:SetIgnoreMoveInput(v) self.ignore_move=v end
@@ -72,9 +84,16 @@ function object(class)
  table.insert(created,o);return o
 end
 pc=object('PlayerController')
+result_screen=false; scroll_end=5; last_scroll_offset=0
 function StaticFindObject(path) return object(path) end
 function StaticConstructObject(class) return object(class.class) end
 function FindFirstOf() return pc end
+function FindAllOf(class_name)
+ if result_screen and (class_name=='WB_EndSpeedrunningTime_C' or class_name=='WB_DEAD_C') then
+  return {object(class_name)}
+ end
+ return {}
+end
 function CreateInvalidObject() return nil end
 function ExecuteInGameThread(fn) fn() end
 function RegisterKeyBind(key,fn) keys[key]=fn end
@@ -234,6 +253,28 @@ class NativeMenuTests(unittest.TestCase):
             assert(test_ui.widget.desired.X==760 and test_ui.widget.desired.Y==560)
             viewport={X=1600,Y=900};dpi=1.25;test_ui:resize()
             assert(test_ui.widget.desired.X==896 and test_ui.widget.desired.Y==624)
+        """)
+
+    def test_end_screen_rolls_active_mod_credits_and_stops_at_end(self):
+        self.lua.execute("""
+            result_screen=true
+            for i=1,16 do tick() end
+            local credits
+            for _,widget in ipairs(created) do
+                if widget.WidgetTree and has_label(widget.WidgetTree.RootWidget,'WOOD  /  MODS LOADED THIS RUN') then credits=widget end
+            end
+            assert(credits, 'The speedrun result screen should show the mod credits')
+            assert(has_label(credits.WidgetTree.RootWidget,'•  Example  /  v1.0'))
+            assert(has_label(credits.WidgetTree.RootWidget,'•  Packaged Helper  /  v1.0.0'))
+            assert(not has_label(credits.WidgetTree.RootWidget,'Disabled'))
+            assert(not has_label(credits.WidgetTree.RootWidget,'Broken'))
+            for i=1,24 do tick() end
+            assert(last_scroll_offset==scroll_end, 'The credit roll should reach the final line')
+            for i=1,16 do tick() end
+            assert(last_scroll_offset==scroll_end, 'The credit roll should remain at its end')
+            result_screen=false
+            for i=1,16 do tick() end
+            assert(credits.removed, 'The report should close when the game leaves the result screen')
         """)
 
     @unittest.skipUnless(os.name == 'nt', 'Runtime discovery uses Windows dir')

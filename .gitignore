@@ -1,4 +1,3 @@
-# Local Python environment and generated release files
 __pycache__/
 *.pyc
 .venv/
@@ -10,17 +9,5 @@ release/
 *.dll
 *.zip
 .wood/
-
-# Standalone mods and other projects do not belong in this repository
 Mods/
-mod data/
-packaged mods/
 *.tungmod
-Windows/
-TUNG-LiveSplit-Autosplitter*/
-site/
-node_modules/
-.netlify/
-netlify.toml
-package.json
-package-lock.json

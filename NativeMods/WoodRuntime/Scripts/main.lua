@@ -24,6 +24,8 @@ local ticks = 0
 local pending_tick = false
 local pending_click
 local mods = {}
+local end_credits = nil
+local end_screen_seen = false
 -- Scan the Mods folder at boot. Each .lua or .tungmod file is a self-contained mod.
 -- Failures are isolated so one bad mod cannot prevent the menu from loading.
 local function scan_mods()
@@ -150,7 +152,7 @@ local function mod_api(definition)
     }
 end
 ui = dofile(directory .. '/menu.lua')({
-    version='2.3.2', mods=mods, mod_api=mod_api, logoPath=data .. 'wood-logo.png',
+    version='2.3.3', mods=mods, mod_api=mod_api, logoPath=data .. 'wood-logo.png',
     loadIcon=function(path)
         local rendering = StaticFindObject('/Script/Engine.Default__KismetRenderingLibrary')
         return rendering:ImportFileAsTexture2D(pc, path)
@@ -159,6 +161,69 @@ ui = dofile(directory .. '/menu.lua')({
 local function toggle_menu()
     if ui.visible then ui:hide() else ui:show(pc) end
     error_message = ''
+end
+local function clear_end_credits()
+    if end_credits and valid(end_credits.widget) then end_credits.widget:RemoveFromParent() end
+    end_credits = nil
+end
+local function make_end_credits()
+    clear_end_credits()
+    local library = StaticFindObject('/Script/UMG.Default__WidgetBlueprintLibrary')
+    local widget = library:Create(pc, StaticFindObject('/Script/UMG.UserWidget'), pc)
+    assert(valid(widget), 'Could not create end-screen mod credits')
+    local tree = widget.WidgetTree
+    local border = StaticConstructObject(StaticFindObject('/Script/UMG.Border'), tree, 0,0,0,false,false,nil)
+    border:SetBrushColor({R=0.008,G=0.006,B=0.016,A=0.88})
+    border:SetPadding({Left=22,Top=16,Right=22,Bottom=16})
+    local panel = StaticConstructObject(StaticFindObject('/Script/UMG.VerticalBox'), tree, 0,0,0,false,false,nil)
+    border:SetContent(panel)
+    local title = StaticConstructObject(StaticFindObject('/Script/UMG.TextBlock'), tree, 0,0,0,false,false,nil)
+    title:SetText(FText('WOOD  /  MODS LOADED THIS RUN'))
+    local title_font = title.Font; title_font.Size = 22; title:SetFont(title_font)
+    title:SetColorAndOpacity({SpecifiedColor={R=0.72,G=0.95,B=0.35,A=1},ColorUseRule=0})
+    panel:AddChildToVerticalBox(title):SetPadding({Left=0,Top=0,Right=0,Bottom=12})
+    local scroll = StaticConstructObject(StaticFindObject('/Script/UMG.ScrollBox'), tree, 0,0,0,false,false,nil)
+    panel:AddChildToVerticalBox(scroll):SetSize({Value=1,SizeRule=1})
+    local list = StaticConstructObject(StaticFindObject('/Script/UMG.VerticalBox'), tree, 0,0,0,false,false,nil)
+    scroll:AddChild(list)
+    local count = 0
+    for _, definition in ipairs(mods) do
+        if definition.enabled and not definition.error then
+            count = count + 1
+            local line = StaticConstructObject(StaticFindObject('/Script/UMG.TextBlock'), tree, 0,0,0,false,false,nil)
+            line:SetText(FText('•  ' .. definition.name .. '  /  v' .. definition.version))
+            local font = line.Font; font.Size = 17; line:SetFont(font)
+            line:SetColorAndOpacity({SpecifiedColor={R=0.94,G=0.93,B=0.98,A=1},ColorUseRule=0})
+            line:SetAutoWrapText(false)
+            list:AddChildToVerticalBox(line):SetPadding({Left=0,Top=3,Right=0,Bottom=3})
+        end
+    end
+    if count == 0 then
+        local line = StaticConstructObject(StaticFindObject('/Script/UMG.TextBlock'), tree, 0,0,0,false,false,nil)
+        line:SetText(FText('No Wood mods were loaded for this attempt.'))
+        panel:AddChildToVerticalBox(line)
+    end
+    tree.RootWidget = border
+    local layout = StaticFindObject('/Script/UMG.Default__WidgetLayoutLibrary')
+    local size = layout:GetViewportSize(pc)
+    local scale = layout:GetViewportScale(pc)
+    if type(scale) ~= 'number' or scale <= 0 then scale = 1 end
+    widget:SetPositionInViewport({X=math.max(18,size.X-530*scale),Y=math.max(24,size.Y*0.12)},true)
+    widget:SetDesiredSizeInViewport({X=500,Y=math.min(430,size.Y*0.76)/scale})
+    widget:AddToViewport(180)
+    scroll:SetScrollOffset(0)
+    end_credits = {widget=widget,scroll=scroll,offset=0,finished=false,layout_wait=0}
+end
+local function live_end_screen()
+    for _, class_name in ipairs({'WB_EndSpeedrunningTime_C','WB_DEAD_C'}) do
+        for _, candidate in pairs(FindAllOf(class_name) or {}) do
+            if valid(candidate) then
+                local name = candidate:GetFullName()
+                if not name:find('Default__', 1, true) then return true end
+            end
+        end
+    end
+    return false
 end
 local function safe(callback)
     local ok, err = pcall(callback)
@@ -191,6 +256,8 @@ LoopAsync(16, function()
             if name ~= world_name then
                 pending_click = nil
                 ui:invalidate()
+                clear_end_credits()
+                end_screen_seen = false
                 if valid(entry) then entry:RemoveFromParent() end
                 local traveling = world_name ~= nil
                 pc = current; world_name = name
@@ -202,6 +269,28 @@ LoopAsync(16, function()
                     end
                 end
                 print('[Wood] Attached to ' .. name .. '\n')
+            end
+            if ticks % 8 == 0 then
+                local result_screen = live_end_screen()
+                if result_screen and not end_screen_seen then
+                    end_screen_seen = true
+                    make_end_credits()
+                elseif not result_screen and end_screen_seen then
+                    end_screen_seen = false
+                    clear_end_credits()
+                end
+            end
+            if end_credits and not end_credits.finished and valid(end_credits.scroll) then
+                local finish = end_credits.scroll:GetScrollOffsetOfEnd()
+                if finish > 0 then
+                    end_credits.layout_wait = 0
+                    end_credits.offset = math.min(finish, end_credits.offset + 0.5)
+                    end_credits.scroll:SetScrollOffset(end_credits.offset)
+                    if end_credits.offset >= finish then end_credits.finished = true end
+                else
+                    end_credits.layout_wait = end_credits.layout_wait + 1
+                    if end_credits.layout_wait >= 60 then end_credits.finished = true end
+                end
             end
             if pending_click and ticks >= pending_click.due then
                 local click = pending_click; pending_click = nil
@@ -238,4 +327,4 @@ LoopAsync(16, function()
     end)
     return false
 end)
-print('[Wood] Mod loader 2.3.2 loaded. F10 opens the mod menu.\n')
+print('[Wood] Mod loader 2.3.3 loaded. F10 opens the mod menu.\n')

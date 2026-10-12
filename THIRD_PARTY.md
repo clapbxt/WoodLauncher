@@ -12,10 +12,3 @@ MIT license, copyright 2022 Narknon. The complete upstream license is included
 inside the runtime archive and installed at `TUNG/Binaries/Win64/ue4ss/LICENSE`.
 The archive is verified before packaging and before installation. It is not
 tracked in the source repository.
-
-## Python and build tools
-
-The standalone executable contains the Python runtime and Tcl/Tk. Their bundled
-notices are included in `Wood-Licenses.txt`. The VDF parser is vdf 3.4 (MIT). PyInstaller
-uses its upstream license and bootloader exception. Build dependencies are pinned
-in `requirements-build.txt`; they are not copied into the source tree.
