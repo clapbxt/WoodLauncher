@@ -3,6 +3,20 @@
 local directory = debug.getinfo(1, 'S').source:sub(2):match('^(.*)[/\\]')
 local root = dofile(directory .. '/paths.lua')
 local data = root .. '/.wood/'
+-- Start the installed updater companion on every game boot. It checks the
+-- release feed independently so starting TUNG through Steam also gets updates.
+local function start_update_check()
+    local helper = root .. '/WoodUninstall.exe'
+    local file = io.open(helper, 'r')
+    if not file then return end
+    file:close()
+    local game_path = root:gsub('/', '\\')
+    local helper_path = helper:gsub('/', '\\')
+    local ok, result = pcall(os.execute,
+        'start "" /b "' .. helper_path .. '" --check-updates --game-dir "' .. game_path .. '"')
+    if not ok or result == nil then print('[Wood] Could not start the update checker.\n') end
+end
+start_update_check()
 local package_reader = dofile(directory .. '/mod_package.lua')
 local function read_ini(path)
     local result = {}
@@ -19,6 +33,7 @@ end
 local error_message = ''
 local pc, world_name, ui
 local entry, entry_button
+local entry_visibility
 local ready = false
 local ticks = 0
 local pending_tick = false
@@ -111,6 +126,23 @@ local function scan_mods()
     end
 end
 scan_mods()
+local tick_groups, tick_groups_by_interval = {}, {}
+for _, definition in ipairs(mods) do
+    if definition.enabled and type(definition.onTick) == 'function' then
+        local interval = tonumber(definition.tickInterval) or 30
+        interval = math.max(1, math.floor(interval))
+        local group = tick_groups_by_interval[interval]
+        if not group then
+            group = {interval=interval, slots={}, count=0}
+            tick_groups_by_interval[interval] = group
+            tick_groups[#tick_groups+1] = group
+        end
+        local slot = group.count % interval + 1
+        group.slots[slot] = group.slots[slot] or {}
+        group.slots[slot][#group.slots[slot]+1] = definition
+        group.count = group.count + 1
+    end
+end
 
 local function valid(object) return object and object:IsValid() end
 local function mod_api(definition)
@@ -152,7 +184,7 @@ local function mod_api(definition)
     }
 end
 ui = dofile(directory .. '/menu.lua')({
-    version='2.3.3', mods=mods, mod_api=mod_api, logoPath=data .. 'wood-logo.png',
+    version='1.1.4', mods=mods, mod_api=mod_api, logoPath=data .. 'wood-logo.png',
     loadIcon=function(path)
         local rendering = StaticFindObject('/Script/Engine.Default__KismetRenderingLibrary')
         return rendering:ImportFileAsTexture2D(pc, path)
@@ -186,19 +218,13 @@ local function make_end_credits()
     panel:AddChildToVerticalBox(scroll):SetSize({Value=1,SizeRule=1})
     local list = StaticConstructObject(StaticFindObject('/Script/UMG.VerticalBox'), tree, 0,0,0,false,false,nil)
     scroll:AddChild(list)
-    local count = 0
+    local credits = {}
     for _, definition in ipairs(mods) do
         if definition.enabled and not definition.error then
-            count = count + 1
-            local line = StaticConstructObject(StaticFindObject('/Script/UMG.TextBlock'), tree, 0,0,0,false,false,nil)
-            line:SetText(FText('•  ' .. definition.name .. '  /  v' .. definition.version))
-            local font = line.Font; font.Size = 17; line:SetFont(font)
-            line:SetColorAndOpacity({SpecifiedColor={R=0.94,G=0.93,B=0.98,A=1},ColorUseRule=0})
-            line:SetAutoWrapText(false)
-            list:AddChildToVerticalBox(line):SetPadding({Left=0,Top=3,Right=0,Bottom=3})
+            credits[#credits+1] = definition
         end
     end
-    if count == 0 then
+    if #credits == 0 then
         local line = StaticConstructObject(StaticFindObject('/Script/UMG.TextBlock'), tree, 0,0,0,false,false,nil)
         line:SetText(FText('No Wood mods were loaded for this attempt.'))
         panel:AddChildToVerticalBox(line)
@@ -212,7 +238,26 @@ local function make_end_credits()
     widget:SetDesiredSizeInViewport({X=500,Y=math.min(430,size.Y*0.76)/scale})
     widget:AddToViewport(180)
     scroll:SetScrollOffset(0)
-    end_credits = {widget=widget,scroll=scroll,offset=0,finished=false,layout_wait=0}
+    end_credits = {widget=widget,scroll=scroll,list=list,entries=credits,next=1,
+        built=#credits==0,offset=0,finished=false,layout_wait=0}
+end
+local function build_end_credits_batch()
+    if not end_credits or end_credits.built then return end
+    for _=1,8 do
+        local definition = end_credits.entries[end_credits.next]
+        if not definition then
+            end_credits.built = true
+            return
+        end
+        local line = StaticConstructObject(StaticFindObject('/Script/UMG.TextBlock'), end_credits.widget.WidgetTree, 0,0,0,false,false,nil)
+        line:SetText(FText('•  ' .. definition.name .. '  /  v' .. definition.version))
+        local font = line.Font; font.Size = 17; line:SetFont(font)
+        line:SetColorAndOpacity({SpecifiedColor={R=0.94,G=0.93,B=0.98,A=1},ColorUseRule=0})
+        line:SetAutoWrapText(false)
+        end_credits.list:AddChildToVerticalBox(line):SetPadding({Left=0,Top=3,Right=0,Bottom=3})
+        end_credits.next = end_credits.next + 1
+    end
+    if end_credits.next > #end_credits.entries then end_credits.built = true end
 end
 local function live_end_screen()
     for _, class_name in ipairs({'WB_EndSpeedrunningTime_C','WB_DEAD_C'}) do
@@ -259,6 +304,7 @@ LoopAsync(16, function()
                 clear_end_credits()
                 end_screen_seen = false
                 if valid(entry) then entry:RemoveFromParent() end
+                entry_visibility = nil
                 local traveling = world_name ~= nil
                 pc = current; world_name = name
                 entry, entry_button = ui:make_entry(pc)
@@ -280,7 +326,8 @@ LoopAsync(16, function()
                     clear_end_credits()
                 end
             end
-            if end_credits and not end_credits.finished and valid(end_credits.scroll) then
+            build_end_credits_batch()
+            if end_credits and end_credits.built and not end_credits.finished and valid(end_credits.scroll) then
                 local finish = end_credits.scroll:GetScrollOffsetOfEnd()
                 if finish > 0 then
                     end_credits.layout_wait = 0
@@ -301,10 +348,9 @@ LoopAsync(16, function()
                     end
                 end
             end
-            for _, definition in ipairs(mods) do
-                local interval = tonumber(definition.tickInterval) or 30
-                interval = math.max(1, math.floor(interval))
-                if definition.enabled and type(definition.onTick) == 'function' and ticks % interval == 0 then
+            for _, group in ipairs(tick_groups) do
+                local due = group.slots[ticks % group.interval + 1]
+                for _, definition in ipairs(due or {}) do
                     local ok, err = pcall(definition.onTick, mod_api(definition))
                     if not ok and definition.tick_error ~= tostring(err) then
                         definition.tick_error = tostring(err)
@@ -313,7 +359,11 @@ LoopAsync(16, function()
                 end
             end
             if valid(entry) then
-                entry:SetVisibility(not ui.visible and pc.bShowMouseCursor and 0 or 2)
+                local visibility = not ui.visible and pc.bShowMouseCursor and 0 or 2
+                if visibility ~= entry_visibility then
+                    entry:SetVisibility(visibility)
+                    entry_visibility = visibility
+                end
                 if ticks % 30 == 0 then
                     local size = StaticFindObject('/Script/UMG.Default__WidgetLayoutLibrary'):GetViewportSize(pc)
                     entry:SetPositionInViewport({X=26, Y=size.Y-74}, true)
@@ -327,4 +377,4 @@ LoopAsync(16, function()
     end)
     return false
 end)
-print('[Wood] Mod loader 2.3.3 loaded. F10 opens the mod menu.\n')
+print('[Wood] Mod loader 1.1.4 loaded. F10 opens the mod menu.\n')

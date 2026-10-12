@@ -40,7 +40,7 @@ The file must `return` a Lua table. Use the metadata fields shown above and a un
 
 - `onWorldReady(api)`: called when Wood detects a different player-controller full name, including the first attachment. This is not a guaranteed callback for every map load. Reacquire game objects here.
 - `onTick(api)`: optional repeated work while a valid controller exists, even when the menu is closed.
-- `tickInterval`: number of Wood loop ticks between calls. Default 30; minimum 1, rounded down. The loop requests 16 ms, so 30 is roughly half a second, not a precise timer.
+- `tickInterval`: number of Wood loop ticks between calls. Default 30; minimum 1, rounded down. The loop requests 16 ms, so 30 is roughly half a second, not a precise timer. Mods with the same interval are spread across those ticks to avoid running all their callbacks in one frame.
 - `buildSettings(api, panel)`: called whenever Wood builds your settings page. Add controls here; avoid starting timers or installing hooks here because the page can rebuild.
 
 Wood invokes these callbacks and its UI callbacks on the game thread. Keep them short. The Lua file itself executes during startup before a player controller is ready: put game-object work in callbacks. Wood catches load and lifecycle errors and logs them; a broken mod can still leave side effects.
@@ -109,7 +109,7 @@ Share the `.tungmod` with a description, tested TUNG/Wood versions, install step
 
 ## 6. Ask another AI to write a mod
 
-Copy the prompt below and replace the bracketed fields. For gameplay work, also supply the relevant inspected TUNG objects or working mod source. Include this guide and the loader files when the AI can read attachments.
+Copy the prompt below and replace the bracketed fields. For gameplay work, also provide relevant inspected TUNG objects or a working mod example. The public GitHub repository is the source of truth for Wood's runtime; the AI can read it directly, so you do not need to upload the loader source files.
 
 ```text
 Write a standalone Lua mod for Wood, the TUNG mod loader.
@@ -117,7 +117,16 @@ Write a standalone Lua mod for Wood, the TUNG mod loader.
 Feature: [describe the behavior, controls, defaults, and limits]
 Mod ID / display name / author: [fill in]
 Tested Wood / TUNG version: [fill in or say unknown]
-Verified TUNG objects, methods, properties, or working example: [attach or paste]
+Verified TUNG objects, methods, properties, or working example: [link to findings or paste a summary]
+
+Wood runtime source and API guide: https://github.com/clapbxt/WoodLauncher
+Read these source files directly before writing:
+- https://github.com/clapbxt/WoodLauncher/blob/main/NativeMods/WoodRuntime/Scripts/main.lua
+- https://github.com/clapbxt/WoodLauncher/blob/main/NativeMods/WoodRuntime/Scripts/menu.lua
+- https://github.com/clapbxt/WoodLauncher/blob/main/NativeMods/WoodRuntime/Scripts/mod_package.lua
+- https://github.com/clapbxt/WoodLauncher/blob/main/docs/MODDING.md
+Do not ask me to upload these public Wood source files. If you cannot access
+GitHub, say so and identify what additional Wood API detail you need.
 
 Follow this Wood implementation contract:
 - One UTF-8 .lua file must return a table with id, name, version, author,
@@ -130,7 +139,8 @@ Follow this Wood implementation contract:
   attachment. Reacquire UObject references and check IsValid before use.
 - onTick runs even with the menu closed when a controller is valid.
   tickInterval is loop ticks, default 30, minimum 1. A requested loop tick is
-  16 ms; this is not a guaranteed real-time or frame-based interval.
+  16 ms; this is not a guaranteed real-time or frame-based interval. Mods
+  sharing an interval are distributed across its ticks to smooth callback work.
 - buildSettings can repeat. Use it to build controls, not register hooks/loops.
 - Call API functions with dots:
   api.label(panel, text, optionalSize)
@@ -166,7 +176,7 @@ a manual test checklist covering
 settings, persistence, travel, and gameplay. State unverified assumptions.
 Do not claim in-game testing unless you actually performed it.
 
-Source of truth if provided: NativeMods/WoodRuntime/Scripts/main.lua,
-menu.lua, mod_package.lua, and WoodModPackager.py. Read these first and use
-their implementation over conflicting generic UE4SS tutorials.
+Treat the linked GitHub repository as the source of truth. Use its actual
+implementation over conflicting generic UE4SS tutorials. The mod packager is
+a separate download on the Developers page; it is not part of the runtime repo.
 ```

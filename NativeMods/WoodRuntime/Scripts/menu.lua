@@ -2,7 +2,7 @@
 -- Hosts settings pages supplied by mods; has no knowledge of any specific mod.
 return function(options)
     local ui = {visible=false, query='', filter='All', selected=nil, tab='Settings',
-        actions={shell={},list={},details={}}, list_buttons={}, shown={}, controls={}}
+        actions={shell={},list={},details={}}, list_buttons={}, shown={}, controls={}, page=1, page_size=20}
     local icon_cache = {}
     local c = {
         ink={R=0.006,G=0.005,B=0.010,A=1}, rail={R=0.012,G=0.008,B=0.020,A=1},
@@ -140,6 +140,7 @@ return function(options)
         return o
     end
     function ui:mod_list()
+        if self.catalog then return self.catalog end
         local list = {}
         for _,definition in ipairs(options.mods) do
             list[#list+1] = {
@@ -153,6 +154,7 @@ return function(options)
                 badge=(definition.name or definition.id):sub(1,2):upper()
             }
         end
+        self.catalog = list
         return list
     end
     function ui:find(id)
@@ -170,10 +172,20 @@ return function(options)
         self.list:ClearChildren(); self.actions.list={}; self.list_buttons={}; self.shown={}
         local query=self.query:lower():sub(1,128)
         local all=self:mod_list()
+        local matches={}
         for _,mod in ipairs(all) do
-            local matches=(mod.name..' '..mod.id..' '..mod.description):lower():find(query,1,true)
-            if matches and (self.filter=='All' or self.filter=='Active' and mod.enabled
+            local found=(mod.name..' '..mod.id..' '..mod.description):lower():find(query,1,true)
+            if found and (self.filter=='All' or self.filter=='Active' and mod.enabled
                 or self.filter=='Settings' and mod.configurable) then
+                matches[#matches+1]=mod
+            end
+        end
+        local page_count=math.max(1,math.ceil(#matches/self.page_size))
+        self.page=math.min(self.page,page_count)
+        local first=(self.page-1)*self.page_size+1
+        local last=math.min(#matches,first+self.page_size-1)
+        for index=first,last do
+                local mod=matches[index]
                 self.shown[#self.shown+1]=mod.id
                 local item=self:construct('Button'); self:skin_button(item); item:SetBackgroundColor(c.card)
                 local contents=self:construct('HorizontalBox')
@@ -229,15 +241,19 @@ return function(options)
                 self.actions.list[#self.actions.list+1]={widget=item,callback=function() self:select(id) end}
                 self.list_buttons[id]=item
                 item:SetToolTipText(FText('Open '..mod.name..' settings'))
-            end
         end
-        put(self.result_count,string.format('%d of %d mods',#self.shown,#all))
-        if #self.shown==0 then
+        local shown_first=#matches>0 and first or 0
+        local shown_last=#matches>0 and last or 0
+        put(self.result_count,string.format('%d-%d of %d mods',shown_first,shown_last,#matches))
+        put(self.page_status,string.format('Page %d of %d',self.page,page_count))
+        self.page_previous:SetIsEnabled(self.page>1)
+        self.page_next:SetIsEnabled(self.page<page_count)
+        if #matches==0 then
             row(self.list,self:text('No mods installed',18),12)
             row(self.list,self:text('Drop .lua or .tungmod files into the Mods folder and restart TUNG.',14,c.muted),4)
             if #all>0 then
                 local buttons=self:construct('HorizontalBox'); row(self.list,buttons,12)
-                self:button(buttons,'Reset filters',function() self.query=''; self.filter='All'; put(self.search,''); self:render_list() end,'list')
+                self:button(buttons,'Reset filters',function() self.query=''; self.filter='All'; self.page=1; put(self.search,''); self:render_list() end,'list')
             end
         end
         self:paint_selection()
@@ -326,13 +342,17 @@ return function(options)
         local filters=self:construct('HorizontalBox'); row(list_shell,filters,9); self.filter_buttons={}
         for _,name in ipairs({'All','Active','Settings'}) do
             local filter=name
-            local b=self:button(filters,name,function() self.filter=filter; self:render_list() end,'shell')
+            local b=self:button(filters,name,function() self.filter=filter; self.page=1; self:render_list() end,'shell')
             b.Slot:SetSize({Value=1,SizeRule=1}); b.Slot:SetPadding({Left=2,Top=0,Right=2,Bottom=0})
             self.filter_buttons[name]=b
         end
         self.result_count=row(list_shell,self:text('',12,c.muted),5)
         self.list_scroll=self:construct('ScrollBox'); list_shell:AddChildToVerticalBox(self.list_scroll):SetSize({Value=1,SizeRule=1})
         self.list=self:construct('VerticalBox'); self.list_scroll:AddChild(self.list)
+        local pages=self:construct('HorizontalBox'); row(list_shell,pages,4)
+        self.page_previous=self:button(pages,'Previous',function() self.page=math.max(1,self.page-1); self:render_list() end,'shell')
+        self.page_status=self:text('',12,c.muted); pages:AddChildToHorizontalBox(self.page_status):SetSize({Value=1,SizeRule=1})
+        self.page_next=self:button(pages,'Next',function() self.page=self.page+1; self:render_list() end,'shell')
         local right=self:construct('Border'); right:SetBrushColor(c.ink); right:SetPadding({Left=24,Top=16,Right=24,Bottom=16})
         columns:AddChildToHorizontalBox(right):SetSize({Value=0.66,SizeRule=1})
         self.detail_scroll=self:construct('ScrollBox'); right:SetContent(self.detail_scroll)
@@ -416,7 +436,7 @@ return function(options)
     function ui:tick()
         if not self.visible then return end
         local query=value(self.search):sub(1,128)
-        if query~=self.query then self.query=query; self:render_list() end
+        if query~=self.query then self.query=query; self.page=1; self:render_list() end
         for _,control in ipairs(self.controls) do
             if valid(control.widget) then control.update(control.widget:GetValue()) end
         end
