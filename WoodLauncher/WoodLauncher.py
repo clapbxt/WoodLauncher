@@ -13,6 +13,7 @@ from tkinter import filedialog, messagebox, ttk
 
 from launcher_core import LAUNCHER_VERSION, RELEASE_MANIFEST, download_update, launch_game, release_info, update_available
 from steam_discovery import find_games
+from process_launch import external_popen
 
 
 class Launcher(tk.Tk):
@@ -95,7 +96,7 @@ class Launcher(tk.Tk):
             import subprocess, time
             report = Path(tempfile.gettempdir()) / 'wood-update-report.json'
             report.unlink(missing_ok=True)
-            subprocess.Popen([str(installer), '--silent', '--game-dir', str(Path(self.game.get()).resolve()),
+            external_popen([str(installer), '--silent', '--game-dir', str(Path(self.game.get()).resolve()),
                               '--report', str(report)], cwd=installer.parent)
             deadline = time.monotonic() + 240
             while time.monotonic() < deadline and not report.is_file():
@@ -118,7 +119,7 @@ class Launcher(tk.Tk):
                       f"Start-Process -FilePath {ps_literal(target)} -ArgumentList @('--game-dir',{ps_literal(game)})")
             encoded = base64.b64encode(script.encode('utf-16le')).decode('ascii')
             environment = dict(os.environ, WOOD_LAUNCHER_PARENT=str(os.getpid()))
-            subprocess.Popen(['powershell.exe', '-NoProfile', '-WindowStyle', 'Hidden',
+            external_popen(['powershell.exe', '-NoProfile', '-WindowStyle', 'Hidden',
                               '-EncodedCommand', encoded], env=environment,
                              creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
             return

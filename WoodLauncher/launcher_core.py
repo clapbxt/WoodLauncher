@@ -9,6 +9,7 @@ import subprocess
 import tempfile
 import urllib.request
 import webbrowser
+from process_launch import external_popen
 
 LAUNCHER_VERSION = '1.2.0'
 WOOD_VERSION = '1.2.0'
@@ -111,15 +112,15 @@ def launch_game(game_dir):
     environment['PYINSTALLER_RESET_ENVIRONMENT'] = '1'
     steam = game / 'TUNG.exe'
     if steam.is_file():
-        return subprocess.Popen([str(steam)], cwd=game, env=environment)
+        return external_popen([str(steam)], cwd=game, env=environment)
     shipping = game / 'TUNG/Binaries/Win64/TUNG-Win64-Shipping.exe'
     if shipping.is_file():
-        return subprocess.Popen([str(shipping)], cwd=game, env=environment)
+        return external_popen([str(shipping)], cwd=game, env=environment)
     try:
         import winreg
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r'Software\Valve\Steam') as key:
             steam_root = Path(winreg.QueryValueEx(key, 'SteamExe')[0])
-        return subprocess.Popen([str(steam_root), '-applaunch', '4341400'], cwd=game, env=environment)
+        return external_popen([str(steam_root), '-applaunch', '4341400'], cwd=game, env=environment)
     except (ImportError, OSError, FileNotFoundError):
         if webbrowser.open('steam://run/4341400'):
             return None

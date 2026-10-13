@@ -8,6 +8,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import urllib.request
+from process_launch import external_popen
 
 RELEASE_MANIFEST = 'https://woodlauncher.clapbxt.com/wood-launcher.json'
 MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024
@@ -67,9 +68,9 @@ def launch_game(game_dir):
     steam = game / 'TUNG.exe'
     shipping = game / 'TUNG/Binaries/Win64/TUNG-Win64-Shipping.exe'
     if steam.is_file():
-        return subprocess.Popen([str(steam)], cwd=game, env=game_environment())
+        return external_popen([str(steam)], cwd=game, env=game_environment())
     if shipping.is_file():
-        return subprocess.Popen([str(shipping)], cwd=game, env=game_environment())
+        return external_popen([str(shipping)], cwd=game, env=game_environment())
     raise FileNotFoundError('TUNG executable was not found in the selected installation.')
 
 

@@ -12,6 +12,7 @@ import time
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from setup_core import VERSION, install, uninstall
+from process_launch import external_popen
 from steam_setup import find_games
 from update_core import (download_setup, game_is_running, launch_game,
                          release_info, update_available)
@@ -46,7 +47,7 @@ def handoff_uninstall(game, silent=False, report=None):
     args = [str(temp), '--uninstall', '--worker', '--game-dir', str(game)]
     if silent: args.append('--silent')
     if report: args += ['--report', str(report)]
-    subprocess.Popen(args, cwd=temp.parent)
+    external_popen(args, cwd=temp.parent)
 
 
 def check_for_setup_update(game_dir=None):
@@ -76,7 +77,7 @@ def check_for_setup_update(game_dir=None):
     command = [str(setup)]
     if game_dir:
         command += ['--game-dir', str(game_dir)]
-    subprocess.Popen(command, cwd=setup.parent)
+    external_popen(command, cwd=setup.parent)
     return True
 
 
@@ -116,7 +117,7 @@ def check_for_game_update(game_dir):
             window.after(150, poll_download); return
         bar.stop(); window.destroy()
         if ok:
-            subprocess.Popen([str(value), '--install-after-exit', '--game-dir', str(Path(game_dir).resolve())],
+            external_popen([str(value), '--install-after-exit', '--game-dir', str(Path(game_dir).resolve())],
                              cwd=value.parent)
         else:
             failed = tk.Tk(); failed.withdraw()

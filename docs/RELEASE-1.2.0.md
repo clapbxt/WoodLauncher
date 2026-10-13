@@ -35,6 +35,9 @@ Wood LiveSplit is a mod and is disabled in Speedrun mode too.
 - Helper startup runs outside the game thread; the menu remains responsive until exit.
 - Builds use standard Windows Python. MSYS2 fallback packaging has been removed.
 - Restarted games do not inherit the helper's temporary PyInstaller directory.
+- Independent child processes also receive the normal Windows DLL search path.
+  A native regression reproduced the temporary-directory DLL lock without this
+  change and verified that cleanup succeeds while the corrected child is running.
 - Cached mod icons are checked for validity; UMG class lookups are cached and
   player-controller discovery runs periodically instead of every frame.
 
