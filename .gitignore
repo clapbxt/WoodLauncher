@@ -10,4 +10,12 @@ release/
 *.zip
 .wood/
 Mods/
+node_modules/
+dist/
+.netlify/
+.env*
+test-results/
+!WoodWebsite/release/
+WoodWebsite/release/*
+!WoodWebsite/release/versions.json
 *.tungmod

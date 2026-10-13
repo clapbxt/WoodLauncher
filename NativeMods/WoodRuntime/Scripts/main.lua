@@ -13,7 +13,7 @@ local function start_update_check()
     local game_path = root:gsub('/', '\\')
     local helper_path = helper:gsub('/', '\\')
     local ok, result = pcall(os.execute,
-        'start "" /b "' .. helper_path .. '" --check-updates --game-dir "' .. game_path .. '"')
+        'set "PYINSTALLER_RESET_ENVIRONMENT=1" & start "" /b "' .. helper_path .. '" --check-updates --game-dir "' .. game_path .. '"')
     if not ok or result == nil then print('[Wood] Could not start the update checker.\n') end
 end
 start_update_check()
@@ -39,6 +39,31 @@ local ticks = 0
 local pending_tick = false
 local pending_click
 local mods = {}
+local installed_files = {}
+local speedrun = read_ini(data .. 'speedrun.ini').enabled == 'true'
+local restart_request
+local session_executed = false
+local native_clean = not speedrun
+local native_inventory = {}
+if speedrun then
+    local native_dir = root .. '/TUNG/Binaries/Win64/ue4ss/Mods'
+    local handle = io.popen('dir /b "' .. native_dir:gsub('/', '\\') .. '" 2>nul')
+    native_clean = handle ~= nil
+    if handle then
+        local runtime_found = false
+        for name in handle:lines() do
+            if name:lower() == 'woodruntime' then runtime_found = true
+            elseif name:lower() ~= 'mods.txt' then native_clean = false end
+        end
+        handle:close()
+        native_clean = native_clean and runtime_found
+    end
+    local inventory = io.open(data .. 'speedrun-native.txt', 'r')
+    if inventory then
+        for name in inventory:lines() do native_inventory[#native_inventory+1] = name end
+        inventory:close()
+    end
+end
 local end_credits = nil
 local end_screen_seen = false
 -- Scan the Mods folder at boot. Each .lua or .tungmod file is a self-contained mod.
@@ -60,6 +85,9 @@ local function scan_mods()
     for filename in handle:lines() do
         files[#files+1] = filename
         local stem, extension = filename:match('^(.+)%.([%w]+)$')
+        if extension and (extension:lower() == 'lua' or extension:lower() == 'tungmod') then
+            installed_files[#installed_files+1] = filename
+        end
         if extension and extension:lower() == 'tungmod' then packaged_stems[stem:lower()] = true end
     end
     handle:close()
@@ -81,9 +109,10 @@ local function scan_mods()
                     metadata, source, icon_path = package_reader.read(path, data .. 'mod_', loaded_ids)
                     mod_id = metadata.id
                     if loaded_ids[mod_id] then error('Duplicate mod ID: ' .. mod_id) end
-                    if disabled[mod_id] then return {} end
+                    if disabled[mod_id] or speedrun then return {} end
                     local chunk, err = load(source, '@' .. path)
                     if not chunk then error(err) end
+                    session_executed = true
                     local result = chunk()
                     if type(result) ~= 'table' then error('Mod source must return a table.') end
                     result.id = metadata.id
@@ -94,12 +123,13 @@ local function scan_mods()
                     result.iconPath = icon_path
                     return result
                 end
-                if disabled[mod_id] then return {} end
+                if disabled[mod_id] or speedrun then return {} end
+                session_executed = true
                 local result = dofile(path)
                 if type(result) ~= 'table' then error('Mod source must return a table.') end
                 return result
             end)
-            local enabled = not disabled[mod_id]
+            local enabled = not disabled[mod_id] and not speedrun
             if ok and type(definition) == 'table' then
                 definition.id = metadata and metadata.id or definition.id or mod_id
                 definition.name = metadata and metadata.name or definition.name or mod_id
@@ -145,9 +175,15 @@ for _, definition in ipairs(mods) do
 end
 
 local function valid(object) return object and object:IsValid() end
+local api_cache, settings_cache = {}, {}
 local function mod_api(definition)
+    if api_cache[definition] then
+        api_cache[definition].playerController = pc
+        return api_cache[definition]
+    end
     local path = data .. definition.id .. '.settings.ini'
-    return {
+    settings_cache[definition] = read_ini(path)
+    local api = {
         playerController = pc,
         label = function(parent, label, size) return ui:label(parent, label, size) end,
         button = function(parent, label, callback) return ui:add_button(parent, label, callback) end,
@@ -163,10 +199,11 @@ local function mod_api(definition)
             return ui:add_slider(parent, label, low, high, step, value, callback, format)
         end,
         refreshSettings = function()
-            if ui.visible and ui.selected == definition.id then ui:render_details() end
+            -- Never destroy the calling button/slider while its callback is active.
+            if ui.visible and ui.selected == definition.id then ui.refresh_pending = definition.id end
         end,
         get = function(key, default)
-            local value = read_ini(path)[key]
+            local value = settings_cache[definition][key]
             if value == nil then return default end
             if type(default) == 'boolean' then return value == 'true' end
             if type(default) == 'number' then return tonumber(value) or default end
@@ -175,16 +212,38 @@ local function mod_api(definition)
         set = function(key, value)
             assert(tostring(key):match('^[%w_]+$'), 'Invalid settings key')
             assert(not tostring(value):find('[\r\n]'), 'Settings must be single-line values')
-            local values = read_ini(path); values[key] = tostring(value)
+            local values = settings_cache[definition]
+            if values[key] == tostring(value) then return end
+            values[key] = tostring(value)
             local file = assert(io.open(path, 'w'))
             for setting, saved in pairs(values) do file:write(setting .. '=' .. saved .. '\n') end
             file:close()
         end,
         log = function(message) print('[Wood/' .. definition.id .. '] ' .. tostring(message) .. '\n') end
     }
+    api_cache[definition] = api
+    return api
 end
 ui = dofile(directory .. '/menu.lua')({
-    version='1.1.4', mods=mods, mod_api=mod_api, logoPath=data .. 'wood-logo.png',
+    version='1.2.0', mods=mods, mod_api=mod_api, logoPath=data .. 'wood-logo.png',
+    speedrun=function() return speedrun end,
+    restartPending=function() return restart_request ~= nil end,
+    setSpeedrun=function(enabled)
+        if restart_request or enabled == speedrun then return end
+        local helper = root .. '/WoodUninstall.exe'
+        local file = io.open(helper, 'rb')
+        if not file then error('Restart helper missing. Run Wood Setup 1.2.0 again.') end
+        file:close()
+        local token = tostring(os.time()) .. tostring(ticks)
+        local status = data .. 'restart-' .. token
+        os.remove(status .. '.ready'); os.remove(status .. '.error')
+        local command = 'set "PYINSTALLER_RESET_ENVIRONMENT=1" & start "" /b "' .. helper:gsub('/', '\\')
+            .. '" --speedrun-mode ' .. (enabled and 'on' or 'off')
+            .. ' --restart-token ' .. token .. ' --game-dir "' .. root:gsub('/', '\\') .. '"'
+        restart_request = {status=status, due=ticks+1800, command=command}
+        ui.notice = 'Restarting TUNG. Waiting for the restart helper...'
+        ui.notice_pending = true
+    end,
     loadIcon=function(path)
         local rendering = StaticFindObject('/Script/Engine.Default__KismetRenderingLibrary')
         return rendering:ImportFileAsTexture2D(pc, path)
@@ -210,18 +269,33 @@ local function make_end_credits()
     local panel = StaticConstructObject(StaticFindObject('/Script/UMG.VerticalBox'), tree, 0,0,0,false,false,nil)
     border:SetContent(panel)
     local title = StaticConstructObject(StaticFindObject('/Script/UMG.TextBlock'), tree, 0,0,0,false,false,nil)
-    title:SetText(FText('WOOD  /  MODS LOADED THIS RUN'))
+    title:SetText(FText(speedrun and 'WOOD  /  SPEEDRUN REPORT' or 'WOOD  /  MODS LOADED THIS RUN'))
     local title_font = title.Font; title_font.Size = 22; title:SetFont(title_font)
     title:SetColorAndOpacity({SpecifiedColor={R=0.72,G=0.95,B=0.35,A=1},ColorUseRule=0})
     panel:AddChildToVerticalBox(title):SetPadding({Left=0,Top=0,Right=0,Bottom=12})
+    local status = StaticConstructObject(StaticFindObject('/Script/UMG.TextBlock'), tree, 0,0,0,false,false,nil)
+    status:SetText(FText(speedrun and not session_executed and native_clean
+        and 'SPEEDRUN MODE ON / All Wood and UE4SS mods disabled. No Wood mod code executed.'
+        or speedrun and 'SPEEDRUN MODE ON / UNVERIFIED: unexpected UE4SS mod files. Do not submit this session.'
+        or 'SPEEDRUN MODE OFF / This session is not certified for speedruns.'))
+    status:SetAutoWrapText(true)
+    panel:AddChildToVerticalBox(status)
     local scroll = StaticConstructObject(StaticFindObject('/Script/UMG.ScrollBox'), tree, 0,0,0,false,false,nil)
     panel:AddChildToVerticalBox(scroll):SetSize({Value=1,SizeRule=1})
     local list = StaticConstructObject(StaticFindObject('/Script/UMG.VerticalBox'), tree, 0,0,0,false,false,nil)
     scroll:AddChild(list)
     local credits = {}
     for _, definition in ipairs(mods) do
-        if definition.enabled and not definition.error then
+        if not speedrun and definition.enabled and not definition.error then
             credits[#credits+1] = definition
+        end
+    end
+    for _, name in ipairs(native_inventory) do
+        credits[#credits+1] = {name='UE4SS: ' .. name, version='isolated'}
+    end
+    if speedrun then
+        for _, filename in ipairs(installed_files) do
+            credits[#credits+1] = {name=filename, version='not executed'}
         end
     end
     if #credits == 0 then
@@ -250,7 +324,8 @@ local function build_end_credits_batch()
             return
         end
         local line = StaticConstructObject(StaticFindObject('/Script/UMG.TextBlock'), end_credits.widget.WidgetTree, 0,0,0,false,false,nil)
-        line:SetText(FText('•  ' .. definition.name .. '  /  v' .. definition.version))
+        line:SetText(FText('•  ' .. definition.name
+            .. (speedrun and '  /  Disabled' or '  /  v' .. definition.version)))
         local font = line.Font; font.Size = 17; line:SetFont(font)
         line:SetColorAndOpacity({SpecifiedColor={R=0.94,G=0.93,B=0.98,A=1},ColorUseRule=0})
         line:SetAutoWrapText(false)
@@ -262,7 +337,7 @@ end
 local function live_end_screen()
     for _, class_name in ipairs({'WB_EndSpeedrunningTime_C','WB_DEAD_C'}) do
         for _, candidate in pairs(FindAllOf(class_name) or {}) do
-            if valid(candidate) then
+            if valid(candidate) and candidate:IsInViewport() then
                 local name = candidate:GetFullName()
                 if not name:find('Default__', 1, true) then return true end
             end
@@ -276,6 +351,8 @@ local function safe(callback)
         local message = tostring(err)
         if message ~= error_message then print('[Wood] ' .. message .. '\n') end
         error_message = message
+        if ui then ui.notice = message end
+        if ui then ui.notice_pending = true end
     end
 end
 local function queue(callback) ExecuteInGameThread(function() safe(callback) end) end
@@ -290,14 +367,49 @@ RegisterKeyBind(Key.RETURN, function() if ui.visible then queue(function() ui:ke
 RegisterKeyBind(Key.SPACE, function() if ui.visible then queue(function() ui:key('space') end) end end)
 
 LoopAsync(16, function()
+    -- Process startup and one-file extraction must never block Unreal's game thread.
+    if restart_request and restart_request.command then
+        local request = restart_request
+        local command = request.command; request.command = nil
+        local ok, result = pcall(os.execute, command)
+        if not ok or result == nil or result == false then
+            request.failure = 'Could not start restart helper. Mode unchanged.'
+        end
+    end
     if pending_tick then return false end
     pending_tick = true
     ExecuteInGameThread(function()
         safe(function()
-            local current = FindFirstOf('PlayerController')
+            local discover = ticks % 30 == 0 or not valid(pc)
+            local current = discover and FindFirstOf('PlayerController') or pc
             ready = valid(current)
             if not ready then return end
-            local name = current:GetFullName()
+            if restart_request then
+                if restart_request.failure then
+                    local message = restart_request.failure; restart_request = nil
+                    error(message)
+                end
+                local failure = io.open(restart_request.status .. '.error', 'r')
+                if failure then
+                    local message = failure:read('*a'); failure:close()
+                    restart_request = nil
+                    error('Restart failed: ' .. message)
+                end
+                local file = io.open(restart_request.status .. '.ready', 'r')
+                if file then
+                    file:close()
+                    if not restart_request.quit then
+                        restart_request.quit = true
+                        StaticFindObject('/Script/Engine.Default__KismetSystemLibrary'):QuitGame(current, current, 0, false)
+                    end
+                elseif ticks > restart_request.due then
+                    restart_request = nil
+                    error('Restart helper did not respond. Mode unchanged; run Setup again.')
+                end
+                -- Continue normal rendering and input until the actual exit.
+                if restart_request and restart_request.quit then return end
+            end
+            local name = discover and current:GetFullName() or world_name
             if name ~= world_name then
                 pending_click = nil
                 ui:invalidate()
@@ -377,4 +489,4 @@ LoopAsync(16, function()
     end)
     return false
 end)
-print('[Wood] Mod loader 1.1.4 loaded. F10 opens the mod menu.\n')
+print('[Wood] Mod loader 1.2.0 loaded. F10 opens the mod menu.\n')

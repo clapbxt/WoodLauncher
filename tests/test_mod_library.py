@@ -37,6 +37,7 @@ function object(class)
  local o={class=class,Font={Size=18},children={},value=1,visibility=0,bShowMouseCursor=true,
   Background=brush(),WidgetStyle={Normal=brush(),Hovered=brush(),Pressed=brush(),Disabled=brush(),Font={},TextStyle={Font={}},ForegroundColor={},BackgroundColor={},BackgroundImageNormal=brush(),BackgroundImageHovered=brush(),BackgroundImageFocused=brush()}}
  function o:IsValid() return true end
+ function o:IsInViewport() return true end
  function o:AddChild(child)
   table.insert(self.children,child); child.parent=self; child.Slot=object('Slot'); return child.Slot
  end
@@ -70,6 +71,7 @@ function object(class)
  function o:GetScrollOffsetOfEnd() return scroll_end end
  function o:SetScrollOffset(v) self.scroll_offset=v; last_scroll_offset=v end
  function o:SetGlobalTimeDilation(pc,speed) applied_speed=speed end
+ function o:QuitGame() quit_calls=(quit_calls or 0)+1 end
  function o:SetIgnoreLookInput(v) self.ignore_look=v end
  function o:SetIgnoreMoveInput(v) self.ignore_move=v end
  function o:SetDesiredSizeInViewport(v) self.desired=v end
@@ -110,6 +112,9 @@ function dofile(path)
  return real_dofile(path)
 end
 function io.popen(cmd)
+ if cmd:find('/ue4ss/Mods',1,true) or cmd:find('\\ue4ss\\Mods',1,true) then
+  return {lines=function() return coroutine.wrap(function() coroutine.yield('WoodRuntime');coroutine.yield('mods.txt');if foreign_native then coroutine.yield('Other') end end) end,close=function() end}
+ end
  if cmd:find('dir /b',1,true) and cmd:find('Mods',1,true) then
   return {lines=function() return coroutine.wrap(function() coroutine.yield('Example.lua') coroutine.yield('Disabled.lua') coroutine.yield('Broken.lua') coroutine.yield('Packaged.tungmod') end) end, close=function() end}
  end
@@ -173,11 +178,12 @@ class NativeMenuTests(unittest.TestCase):
         }, self.icon)
         self.boot()
 
-    def boot(self, real_discovery=False):
+    def boot(self, real_discovery=False, foreign_native=False):
         self.lua = LuaRuntime(unpack_returned_tuples=True)
         self.lua.globals().test_root = self.temp.name.replace('\\', '/')
         self.lua.globals().test_menu = str(Path('NativeMods/WoodRuntime/Scripts/menu.lua').resolve()).replace('\\', '/')
         self.lua.execute(BOOT)
+        self.lua.globals().foreign_native = foreign_native
         if real_discovery:
             self.lua.execute('io.popen=real_popen')
         self.lua.execute("assert(load(..., '@NativeMods/WoodRuntime/Scripts/main.lua'))()",
@@ -239,12 +245,95 @@ class NativeMenuTests(unittest.TestCase):
             assert(click('Reset filters'));assert(#test_ui.shown==4)
         """)
 
+    def test_refresh_is_deferred_until_callback_returns(self):
+        self.lua.execute("""
+            local definition=test_ui:find('Example').definition
+            definition.buildSettings=function(api,panel)
+                builds=builds+1
+                api.toggle(panel,'Refresh toggle',false,function()
+                    local before=builds
+                    api.refreshSettings();api.refreshSettings()
+                    assert(builds==before, 'Callback must retain its widgets until it returns')
+                end)
+            end
+            assert(click('Example'));assert(builds==1)
+            assert(click('Off'));assert(builds==2, 'Refresh requests should be coalesced')
+            for i=1,6 do tick() end;assert(builds==2)
+        """)
+
+    def test_show_is_idempotent_and_restores_input(self):
+        self.lua.execute("""
+            assert(test_ui.visible)
+            local cursor=test_ui.saved_cursor
+            test_ui:show(pc);assert(test_ui.saved_cursor==cursor)
+            test_ui:hide();assert(not pc.ignore_look and not pc.ignore_move)
+        """)
+
+    def test_speedrun_boot_never_executes_mod_top_level_or_callbacks(self):
+        (self.data / 'speedrun.ini').write_text('enabled=true\n')
+        (self.mods_dir / 'Example.lua').write_text("top_level=true;RegisterKeyBind(Key.F6,function() cheat=true end);return {}")
+        self.boot()
+        self.lua.execute("""
+            assert(top_level==nil and keys.F6==nil and world_ready==nil)
+            assert(not test_ui:find('Example').enabled)
+            assert(not test_ui:find('packaged-helper').enabled)
+            assert(test_ui:find('Broken').error==nil, 'Even broken mod source must not execute')
+            for i=1,30 do tick() end;assert(fast_ticks==0)
+            result_screen=true;for i=1,16 do tick() end
+            local report
+            for _,widget in ipairs(created) do
+                if widget.WidgetTree and has_label(widget.WidgetTree.RootWidget,'WOOD  /  SPEEDRUN REPORT') then report=widget end
+            end
+            assert(report)
+            assert(has_label(report.WidgetTree.RootWidget,'SPEEDRUN MODE ON / All Wood and UE4SS mods disabled. No Wood mod code executed.'))
+            assert(has_label(report.WidgetTree.RootWidget,'•  Example.lua  /  Disabled'))
+            assert(has_label(report.WidgetTree.RootWidget,'•  Disabled.lua  /  Disabled'))
+            assert(has_label(report.WidgetTree.RootWidget,'•  Broken.lua  /  Disabled'))
+        """)
+
+    def test_toggle_waits_for_helper_acknowledgement_before_quit(self):
+        (self.root / 'WoodUninstall.exe').write_bytes(b'helper fixture')
+        self.lua.execute("""
+            os.execute=function(command)
+                restart_command=command
+                local token=command:match('%-%-restart%-token (%w+)')
+                local file=assert(io.open(test_root..'/.wood/restart-'..token..'.ready','w'))
+                file:write('ready');file:close();return true
+            end
+            assert(click('Speedrun: Off'))
+            assert(restart_command==nil, 'Shell startup must wait for the async dispatcher')
+            tick()
+            assert(restart_command:find('--speedrun-mode on',1,true))
+            assert(quit_calls==1)
+            for i=1,6 do tick() end;assert(quit_calls==1)
+        """)
+        self.assertFalse((self.data / 'speedrun.ini').exists(), 'Live process cannot claim the new mode')
+
+    def test_foreign_native_mod_never_gets_a_clean_status(self):
+        (self.data / 'speedrun.ini').write_text('enabled=true\n')
+        self.boot(foreign_native=True)
+        self.lua.execute("""
+            result_screen=true;for i=1,16 do tick() end
+            local warned=false
+            for _,widget in ipairs(created) do
+                if widget.label and widget.label:find('UNVERIFIED',1,true) then warned=true end
+                assert(widget.label~='SPEEDRUN MODE ON / All Wood and UE4SS mods disabled. No Wood mod code executed.')
+            end
+            assert(warned)
+        """)
+
+    def test_missing_restart_helper_keeps_current_mode(self):
+        self.lua.execute("""
+            assert(click('Speedrun: Off'));assert(quit_calls==nil)
+            assert(test_ui.visible and test_ui.notice:find('Restart helper missing',1,true))
+        """)
+
     def test_callbacks_and_keyboard_survive_world_travel(self):
         self.lua.execute("""
             for i=1,6 do tick() end;assert(fast_ticks>0 and world_ready==1)
             assert(click('Example'));keys.ESCAPE();assert(test_ui.selected==nil and test_ui.visible)
             keys.ESCAPE();assert(not test_ui.visible and not pc.ignore_look and not pc.ignore_move)
-            world='NextWorld';tick();assert(world_ready==2);keys.F10();assert(test_ui.visible)
+            world='NextWorld';for i=1,30 do tick() end;assert(world_ready==2);keys.F10();assert(test_ui.visible)
         """)
 
     def test_viewport_respects_dpi_and_resizing(self):

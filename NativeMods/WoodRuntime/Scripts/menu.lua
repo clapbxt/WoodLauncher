@@ -4,6 +4,7 @@ return function(options)
     local ui = {visible=false, query='', filter='All', selected=nil, tab='Settings',
         actions={shell={},list={},details={}}, list_buttons={}, shown={}, controls={}, page=1, page_size=20}
     local icon_cache = {}
+    local class_cache = {}
     local c = {
         ink={R=0.006,G=0.005,B=0.010,A=1}, rail={R=0.012,G=0.008,B=0.020,A=1},
         card={R=0.024,G=0.018,B=0.036,A=1}, selected={R=0.09,G=0.032,B=0.19,A=1},
@@ -33,7 +34,8 @@ return function(options)
         rounded(style.Disabled,6,{R=0.45,G=0.45,B=0.45,A=1})
     end
     function ui:construct(class, outer)
-        return StaticConstructObject(StaticFindObject('/Script/UMG.' .. class), outer or self.tree, 0,0,0,false,false,nil)
+        if not valid(class_cache[class]) then class_cache[class]=StaticFindObject('/Script/UMG.' .. class) end
+        return StaticConstructObject(class_cache[class], outer or self.tree, 0,0,0,false,false,nil)
     end
     function ui:text(label, size, color, outer)
         local o=self:construct('TextBlock',outer)
@@ -169,6 +171,7 @@ return function(options)
         end
     end
     function ui:render_list()
+        self.focus_widget=nil
         self.list:ClearChildren(); self.actions.list={}; self.list_buttons={}; self.shown={}
         local query=self.query:lower():sub(1,128)
         local all=self:mod_list()
@@ -196,7 +199,7 @@ return function(options)
                 rounded(icon.Background,7,{R=1,G=1,B=1,A=1})
                 local texture
                 if mod.iconPath and options.loadIcon then
-                    if icon_cache[mod.iconPath] == nil then
+                    if icon_cache[mod.iconPath] == nil or icon_cache[mod.iconPath] and not valid(icon_cache[mod.iconPath]) then
                         local ok, result = pcall(options.loadIcon, mod.iconPath)
                         if ok and result then
                             icon_cache[mod.iconPath] = result
@@ -207,7 +210,7 @@ return function(options)
                     end
                     texture = icon_cache[mod.iconPath]
                 end
-                if texture then
+                if valid(texture) then
                     local image=self:construct('Image')
                     local ok, err=pcall(function() image:SetBrushFromTexture(texture,true) end)
                     if ok then
@@ -262,8 +265,11 @@ return function(options)
         self.selected=id; self.tab=tab or 'Settings'; self:render_details(); self:paint_selection()
     end
     function ui:render_details()
+        self.focus_widget=nil
+        self.refresh_pending=nil
         self.details:ClearChildren(); self.actions.details={}; self.controls={}
         local panel=self.details; local mod=self:find(self.selected)
+        if self.notice then row(panel,self:text(self.notice,14,c.error),8) end
         if not mod then
             row(panel,self:text('YOUR MODS',28),12)
             row(panel,self:text('Drop .lua or .tungmod files into the Mods folder.',18,c.purple),6)
@@ -299,7 +305,9 @@ return function(options)
         elseif not mod.enabled then
             local notice=self:card(panel)
             row(notice,self:text('This mod is disabled',20),6)
-            row(notice,self:text('Remove its entry from .wood/mods_disabled.txt and restart TUNG.',15,c.muted),8)
+            row(notice,self:text(options.speedrun and options.speedrun()
+                and 'Speedrun mode prevents this mod from running. Settings are unavailable.'
+                or 'This mod is unavailable in the current session.',15,c.muted),8)
         elseif mod.configurable then
             local contents=self:card(panel)
             local ok,err=pcall(mod.definition.buildSettings,options.mod_api(mod.definition),contents)
@@ -333,6 +341,13 @@ return function(options)
         heading:AddChildToHorizontalBox(self:text('WOOD  /  MODS',23,c.lime)):SetSize({Value=1,SizeRule=1})
         local ver=self:text('v'..options.version..'   /   TUNG',13,c.muted); ver:SetAutoWrapText(false)
         heading:AddChild(ver); shell:AddChild(header)
+        if options.setSpeedrun then
+            local mode=self:construct('HorizontalBox'); shell:AddChild(mode)
+            mode:AddChildToHorizontalBox(self:text('Speedrun mode: changing this restarts TUNG',13,c.muted)):SetSize({Value=1,SizeRule=1})
+            self:button(mode,options.speedrun() and 'Speedrun: On' or 'Speedrun: Off',function()
+                options.setSpeedrun(not options.speedrun())
+            end,'shell',true)
+        end
         local columns=self:construct('HorizontalBox'); shell:AddChildToVerticalBox(columns):SetSize({Value=1,SizeRule=1})
         local left=self:construct('Border'); left:SetBrushColor(c.rail); left:SetPadding({Left=18,Top=16,Right=18,Bottom=16})
         columns:AddChildToHorizontalBox(left):SetSize({Value=0.34,SizeRule=1})
@@ -367,6 +382,7 @@ return function(options)
         print('[Wood] Mod menu created\n')
     end
     function ui:show(pc)
+        if self.visible then return end
         if not valid(pc) then return end
         if not valid(self.widget) then
             local ok,err=pcall(function() self:build(pc) end)
@@ -435,10 +451,19 @@ return function(options)
     end
     function ui:tick()
         if not self.visible then return end
+        if self.notice_pending then
+            self.notice_pending=false
+            self:render_details()
+        end
+        if self.refresh_pending then
+            local selected=self.refresh_pending; self.refresh_pending=nil
+            if selected==self.selected then self:render_details() end
+        end
         local query=value(self.search):sub(1,128)
         if query~=self.query then self.query=query; self.page=1; self:render_list() end
         for _,control in ipairs(self.controls) do
             if valid(control.widget) then control.update(control.widget:GetValue()) end
+            if self.refresh_pending then break end
         end
         self:update_focus()
     end
@@ -446,8 +471,10 @@ return function(options)
         self:hide()
         if valid(self.widget) then self.widget:RemoveFromParent() end
         self.widget=nil; self.tree=nil; self.search=nil
+        icon_cache={}
         self.actions={shell={},list={},details={}}; self.list_buttons={}; self.controls={}
         self.focus_widget=nil
+        self.refresh_pending=nil
     end
     function ui:make_entry(pc)
         local widget=library():Create(pc,StaticFindObject('/Script/UMG.UserWidget'),pc)

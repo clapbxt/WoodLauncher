@@ -47,6 +47,13 @@ Wood invokes these callbacks and its UI callbacks on the game thread. Keep them 
 
 There are no Wood `onEnable`, `onDisable`, or unload callbacks. Changes to mod files require a game restart. Avoid independent loops and keybinds unless you handle their state yourself; Wood does not stop them for you.
 
+In Wood 1.2.0, changing Speedrun mode restarts TUNG. A Speedrun session never
+executes user mod source, including top-level registrations; the restart helper
+also isolates other UE4SS mods before starting the new process. Settings remain
+saved for when the mode is turned off. `api.refreshSettings()` defers and merges
+refresh requests until the next UI tick. Settings are cached during a session;
+restart TUNG after changing INI files externally.
+
 ## 3. Use Wood's API
 
 Call helpers with a dot, such as `api.get(...)`. These are the helpers implemented in `NativeMods/WoodRuntime/Scripts/main.lua` and `menu.lua`:
@@ -89,7 +96,7 @@ Wood's helpers cover menus and preferences. Gameplay uses UE4SS and TUNG's refle
 1. Test the `.lua` file before packaging. Restart after each edit.
 2. Check F10 for load/settings errors, then read `TUNG/Binaries/Win64/ue4ss/UE4SS.log` for details.
 3. Test settings, restart persistence, and a new run or world transition. Confirm any gameplay effect in TUNG.
-4. If the mod is missing, check the top-level folder, extension, and filename. If disabled, remove its entry from `.wood/mods_disabled.txt` and restart.
+4. If the mod is missing, check the top-level folder, extension, and filename. Speedrun mode blocks all mod execution and settings.
 5. Keep one installed copy per ID. Remove the development `.lua` before installing its `.tungmod`. Wood 2.3.1 prioritizes packages with the same filename stem and skips duplicate IDs, but avoiding duplicate files prevents confusion and startup side effects.
 
 Disabling is checked at startup. For plain Lua, the disabled-list entry is the filename without `.lua`; for a package it is the metadata ID. The loader overwrites a returned `enabled` field, so it is not a way to disable your mod. To add your own feature toggle, persist it with `api.set` and check it in your behavior callbacks.
